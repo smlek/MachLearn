@@ -1,0 +1,83 @@
+---
+title: "Machine Learning Examples"
+author: "Stan Mlekodaj"
+date: "February 19, 2016"
+output: html_document
+---
+```{r overhead, echo=FALSE, message=FALSE}
+# General environment setup
+# Clear variables
+rm(list=ls())
+# all par settings which could be changed.
+old.par <- par(no.readonly = TRUE)
+# Load required packages
+library(knitr)
+library(xtable)
+library(data.table)
+library(nnet)
+library(neuralnet)
+library(randomForest)
+```
+```{r, ref.label="functions", echo=FALSE}
+#runs chunk with all function definitions
+```
+
+## R Packages for Machine Learning
+nnet
+neuralnet
+
+randomForest
+RSNNS
+
+## To-Do's
+Feature normalization (caret package?)
+Gradient Checking
+Selecting model complexity (polynomial degree) vs. cross-validation error
+Selecting lambda (regularization parameter) vs. CV error
+Plotting Learning Curve to detect high bias or variance
+Error analysis in CV errors. Trying to categorize CV error sets.
+F Score, Accuracy, Precision, Recall
+
+## neuralnet with infert
+
+```{r}
+nn <- neuralnet(case~age+parity+induced+spontaneous,
+                data=infert, hidden=2, err.fct="ce",
+                linear.output=FALSE
+                )
+
+nn
+
+out <- cbind(nn$covariate, nn$net.result[[1]])
+dimnames(out) <- list(NULL, c("age","parity","induced", "spontaneous","nn-output"))
+head(out)
+plot(nn)
+```
+
+## nnet with infert
+
+```{r}
+nn.bp <- neuralnet(case~age+parity+induced+spontaneous,
+                data=infert, hidden=2, err.fct="ce",
+                linear.output=FALSE, algorithm="backprop", learningrate=0.01
+                )
+nn.bp
+
+nn.nnet <- nnet(case~age+parity+induced+spontaneous, data=infert, size=2, entropy=T, abstol=0.01)
+
+```
+
+```{r}
+summary(cars)
+```
+
+
+```{r,echo=FALSE,fig.width=8,fig.height=6,fig.align='left',dpi=72,fig.retina=3}
+```
+
+
+
+
+```{r functions, echo=FALSE, eval=FALSE}
+# Define functions in this chunk
+```
