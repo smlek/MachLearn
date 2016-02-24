@@ -8,15 +8,18 @@ output: html_document
 # General environment setup
 # Clear variables
 rm(list=ls())
+set.seed(18)
 # all par settings which could be changed.
 old.par <- par(no.readonly = TRUE)
 # Load required packages
 library(knitr)
 library(xtable)
-library(data.table)
-library(nnet)
+#library(data.table)
+#library(nnet)
 library(neuralnet)
-library(randomForest)
+#library(randomForest)
+library(RSNNS)
+library(ROCR)
 ```
 ```{r, ref.label="functions", echo=FALSE}
 #runs chunk with all function definitions
@@ -25,59 +28,384 @@ library(randomForest)
 ## R Packages for Machine Learning
 nnet
 neuralnet
-
 randomForest
 RSNNS
 
 ## To-Do's
+
+Training outputs skewness check
 Feature normalization (caret package?)
 Gradient Checking
 Selecting model complexity (polynomial degree) vs. cross-validation error
 Selecting lambda (regularization parameter) vs. CV error
 Plotting Learning Curve to detect high bias or variance
 Error analysis in CV errors. Trying to categorize CV error sets.
+Determine threshold for output classification
+    Use performance() function to plot measures vs. cutoff.
+    Currently, ROCR supports only binary classification.
 F Score, Accuracy, Precision, Recall
 
-## neuralnet with infert
+## General flow
+
+    1. Define data inputs, ouputs. Make sure outputs are ~50/50 outcomes (not skewed)
+    2. normalize data (except ouputs when binary)
+    3. Split data into training, cross-validation, test sets
+    4. Train model on training set
+    5. Tune model parameters for best cross-validation performance
+    6. Evaluate model on test set
+    
+## Model Evalulation
+ROCR package prediction() & performance(). Can plot metrics vs. cutoff to find best threshold
+for binary classifier output.
+
+Need to determine what predictor metric is important.
+
+    1. run model on trainInputs & trainOutputs
+    2. predict on cvInputs
+    3. make predict object using prediction(predict, cvOutputs), 
+    4. feed it into performance()
+    5. choose best "cutoff"
+    6. report performance metrics for that cutoff
+    7. predict on testInputs, report performance
+    
+## Data Definitions
 
 ```{r}
-nn <- neuralnet(case~age+parity+induced+spontaneous,
-                data=infert, hidden=2, err.fct="ce",
-                linear.output=FALSE
+############ define data, model formula (training sets in rows) #######
+rawData <- infert
+
+# model formula definition (neuralnet, nnet)
+fo <- formula("case ~ age+parity+induced+spontaneous")
+
+# input & output column indexes
+inCols <- c(2, 3, 4, 6)
+outCols <- c(5)
+
+# Which columns to normalize - 0/1 outputs/inputs dont need scaling.
+normCols <- c(2, 3, 4, 6, 7, 8)
+
+#######################################################################
+nInputs <- nrow(rawData)
+featureNames <- colnames(rawData)
+
+# Feature Normalization
+allData <- rawData
+allData[ , normCols] <- normalizeData(rawData[ , normCols], type = "norm") #also type = "0_1" or "center"
+
+# randomize rows
+allData <- allData[sample(nInputs), ]
+
+# split data in training, cross-validation, and test sets
+trainBreak <- nInputs * 0.6 # 60% train
+cvBreak <- nInputs * 0.8    # 20% cv, 20% test
+trainData <- allData[1 : trainBreak, ]
+cvData <- allData[(trainBreak + 1) : cvBreak, ]
+testData <- allData[(cvBreak + 1) : nInputs, ]
+
+# for RSNNS - split into input & output matrixes 
+trainInputs <- trainData[, inCols]
+trainOutputs <- trainData[, outCols]
+cvInputs <- cvData[, inCols]
+cvOutputs <- cvData[, outCols]
+testInputs <- testData[, inCols]
+testOutputs <- testData[, outCols]
+```
+
+## RSNNS Neural Network - MLP 
+
+```{r}
+# neural network using RSNNS 
+model <- mlp(trainInputs, trainOutputs,
+             size=2,
+             learnFunc="Quickprop", learnFuncParams=c(0.1, 2.0, 0.0001, 0.1),
+             maxit=500,
+             linOut = FALSE,
+             inputsTest = cvInputs,
+             targetsTest = cvOutputs
+             )
+print(model)
+summary(model)
+weightMatrix(model)
+#extractNetInfo(model)
+
+# Prediction on cross-validation data
+predict_cv <- predict(model, cvInputs)
+# predict on test set
+predict_test <- predict(model, testInputs)
+
+# Initial model plots on cross-validation data
+par(mfrow=c(2,2))
+plotIterativeError(model) # SSE error vs. training iteration
+plotRegressionError(cvOutputs, predict_cv) # regression quality
+plotROC(fitted.values(model), trainOutputs) # ROC on training data
+plotROC(predict_cv, cvOutputs) # cross validation ROC
+
+# Evaluate performance on cross-validation set
+cvCutoff <- getCutoffAndPlot(predict_cv, cvOutputs)
+cutoff_cv <- cvCutoff[[1]]
+perfMetricName_cv <- cvCutoff[[2]]
+perfMetric_cv <- cvCutoff[[3]]
+
+# # make predicitons object using ROCR - ONLY FOR BINARY CLASSIFICATION
+# pred_cv_obj <- ROCR::prediction(predict_cv, cvOutputs) # nerualnet also has prediction()
+# # performance - need decision on most important metric
+# perf_cv_obj <- ROCR::performance(pred_cv_obj, "acc", "cutoff")
+# maxMetricInd <- which.max(perf_cv_obj@y.values[[1]])    # index of metric max
+# cutoff_cv <- pred_cv_obj@cutoffs[[1]][maxMetricInd]     # cutoff for max metric 
+# perfMetric_cv <- perf_cv_obj@y.values[[1]][maxMetricInd]   # metric value at cutoff
+# perfMetricName <- perf_cv_obj@y.name                    # metric name
+# 
+# # Plot several metrics vs. cutoff
+# par(mfrow=c(2,2))
+# plot(ROCR::performance(pred_cv_obj, "acc", "cutoff"), main = "Accuracy")
+# plot(ROCR::performance(pred_cv_obj, "f", "cutoff"), main = "F-Score")
+# plot(ROCR::performance(pred_cv_obj, "phi", "cutoff"), main = "Phi Corr. Coef.")
+# plot(ROCR::performance(pred_cv_obj, "sar", "cutoff"), main = "SAR Multi-Score")
+
+#Repeat on test set
+testCutoff <- getCutoffAndPlot(predict_test, testOutputs)
+cutoff_test <- testCutoff[[1]]
+perfMetricName_test <- testCutoff[[2]]
+perfMetric_test <- testCutoff[[3]]
+
+# # make predicitons object using ROCR - ONLY FOR BINARY CLASSIFICATION
+# pred_test_obj <- ROCR::prediction(predict_test, testOutputs) # nerualnet also has prediction()
+# # performance - need decision on most important metric
+# perf_test_obj <- ROCR::performance(pred_test_obj, "acc", "cutoff")
+# maxMetricInd <- which.max(perf_test_obj@y.values[[1]])    # index of metric max
+# cutoff_test <- pred_test_obj@cutoffs[[1]][maxMetricInd]     # cutoff for max metric 
+# perfMetric_test <- perf_test_obj@y.values[[1]][maxMetricInd]   # metric value at cutoff
+# perfMetricName <- perf_test_obj@y.name                    # metric name
+# 
+# # Plot several metrics vs. cutoff
+# par(mfrow=c(2,2))
+# plot(ROCR::performance(pred_test_obj, "acc", "cutoff"), main = "Accuracy")
+# plot(ROCR::performance(pred_test_obj, "f", "cutoff"), main = "F-Score")
+# plot(ROCR::performance(pred_test_obj, "phi", "cutoff"), main = "Phi Corr. Coef.")
+# plot(ROCR::performance(pred_test_obj, "sar", "cutoff"), main = "SAR Multi-Score")
+
+
+
+# 
+# confusionMatrix(trainOutputs, round(fitted.values(model)))
+# confusionMatrix(cvOutputs, round(predictions))
+# confusionMatrix(testOutputs , round(predict(model, testInputs)))
+
+
+```
+
+## neuralnet
+
+```{r}
+# neuralnet package
+nn <- neuralnet(fo, data = trainData,
+                hidden=2,
+                threshold = 0.01,
+                stepmax = 1e+5,
+                learningrate = 0.01,
+                lifesign = "full",
+                algorithm = "rprop+",
+                err.fct = "ce",
+                act.fct = "logistic",
+                linear.output = FALSE
                 )
 
 nn
+nn_predict <- compute(nn, covariate = cvInputs)
+
+# performance & cutoff selection
+
+confusionMatrix(trainOutputs, round(nn$net.result[[1]]))
+confusionMatrix(cvOutputs, round(nn_predict$net.result))
+confusionMatrix(testOutputs , round(compute(nn, covariate = testInputs)$net.result))
+
 
 out <- cbind(nn$covariate, nn$net.result[[1]])
 dimnames(out) <- list(NULL, c("age","parity","induced", "spontaneous","nn-output"))
 head(out)
 plot(nn)
+
+
+
+
+# nn <- neuralnet(case~age+parity+induced+spontaneous,
+#             data=trainData, hidden=2, err.fct="ce",
+#             threshold = 0.01,
+#             lifesign = "full",
+#             stepmax = 1e+5,
+#             rep = 1,
+#             linear.output=FALSE
+#             )
+# 
+
+# 
+# for (i in 1:500){
+#     nn <- neuralnet(case~age+parity+induced+spontaneous,
+#                 data=trainData, hidden=2, err.fct="ce",
+#                 threshold = 1e5,
+#                 startweights = nn$weights,
+#                 lifesign = "full",
+#                 stepmax = 1,
+#                 linear.output=FALSE
+#                 )
+# }
+
+
 ```
 
-## nnet with infert
+## nnet vs neuralnet
 
 ```{r}
-nn.bp <- neuralnet(case~age+parity+induced+spontaneous,
-                data=infert, hidden=2, err.fct="ce",
-                linear.output=FALSE, algorithm="backprop", learningrate=0.01
+nn.bp <- neuralnet(fo, data = trainData,
+                hidden=2,
+                threshold = 0.01,
+                stepmax = 1e+5,
+                learningrate = 0.01,
+                lifesign = "full",
+                algorithm = "backprop",
+                err.fct = "ce",
+                act.fct = "logistic",
+                linear.output = FALSE
                 )
 nn.bp
 
-nn.nnet <- nnet(case~age+parity+induced+spontaneous, data=infert, size=2, entropy=T, abstol=0.01)
-
+nn.nnet <- nnet(fo, data = trainData, size = 2, entropy = T, abstol = 0.01)
+nn.nnet
 ```
 
 ```{r}
-summary(cars)
+
+####  Example from RSNNS R package documentation
+library(RSNNS)
+rm(list=ls())
+set.seed(18)
+data(iris)
+#shuffle the vector
+iris <- iris[sample(1:nrow(iris),length(1:nrow(iris))),1:ncol(iris)]
+
+irisValues <- iris[,1:4]
+irisTargets <- decodeClassLabels(iris[,5])
+#irisTargets <- decodeClassLabels(iris[,5], valTrue=0.9, valFalse=0.1)
+iris <- splitForTrainingAndTest(irisValues, irisTargets, ratio=0.15)
+iris <- normTrainingAndTestSet(iris)
+model <- mlp(iris$inputsTrain, iris$targetsTrain, size=5, learnFuncParams=c(0.1),
+maxit=50, inputsTest=iris$inputsTest, targetsTest=iris$targetsTest)
+summary(model)
+model
+weightMatrix(model)
+extractNetInfo(model)
+par(mfrow=c(2,2))
+plotIterativeError(model)
+predictions <- predict(model,iris$inputsTest)
+plotRegressionError(predictions[,2], iris$targetsTest[,2])
+confusionMatrix(iris$targetsTrain,fitted.values(model))
+confusionMatrix(iris$targetsTest,predictions)
+plotROC(fitted.values(model)[,2], iris$targetsTrain[,2])
+plotROC(predictions[,2], iris$targetsTest[,2])
+#confusion matrix with 402040-method
+confusionMatrix(iris$targetsTrain, encodeClassLabels(fitted.values(model),
+method="402040", l=0.4, h=0.6))
 ```
 
 
 ```{r,echo=FALSE,fig.width=8,fig.height=6,fig.align='left',dpi=72,fig.retina=3}
 ```
 
+```{r}
+# example of using performance() function in ROCR
+# Currently, ROCR supports only binary classification
+# first need to create a prediction object. 
+# By default, x.measure='cutoff' input in performance(), i.e. always get measure vs. cutoff
+# Can use to find best cutoff.
+library(ROCR)
+test_pred <- c(rep(0.8, 10), rep(0.4, 10))
+test_pred <- rnorm(20)
+test_true <- c(rep(1, 8), rep(0, 12))
+
+pred_obj <- ROCR::prediction( test_pred, test_true)
+pred_obj
+perf_obj <- performance(pred_obj, "sar", "cutoff")
+perf_obj <- performance(pred_obj, "f", "cutoff")
+perf_obj <- performance(pred_obj,"tpr","fpr")
+plot(perf_obj)
+```
 
 
 
 ```{r functions, echo=FALSE, eval=FALSE}
 # Define functions in this chunk
+
+##############  NEEDS VERIFICATION
+# Takes predicted & target values, computes best prediction cutoff for max accuracy.
+# ONLY FOR BINARY CLASSIFICATION - targets values must have only 2 values
+# Returns cutoff and resulting accuracy. Also plots 4 metrics vs. cutoffs
+getCutoffAndPlot <- function(predicted, targets) {
+   
+    par(mfrow=c(1,1))
+    plotROC(predicted, targets, main = "ROC Curve") # ROC curve
+    
+    # make predicitons object using ROCR
+    pred_obj <- ROCR::prediction(predicted, targets) # nerualnet also has prediction()
+    # performance - need decision on most important metric
+    perf_obj <- ROCR::performance(pred_obj, "acc", "cutoff")
+    maxMetricInd <- which.max(perf_obj@y.values[[1]])    # index of metric max
+    cutoff <- pred_obj@cutoffs[[1]][maxMetricInd]     # cutoff for max metric 
+    perfMetric <- perf_obj@y.values[[1]][maxMetricInd]   # metric value at cutoff
+    perfMetricName <- perf_obj@y.name                    # metric name
+    
+    # Plot several metrics vs. cutoff
+    par(mfrow=c(2,2))
+    plot(ROCR::performance(pred_obj, "acc", "cutoff"), ylim = c(0,1), main = "Accuracy")
+    plot(ROCR::performance(pred_obj, "f", "cutoff"), ylim = c(0,1), main = "F-Score")
+    plot(ROCR::performance(pred_obj, "phi", "cutoff"), ylim = c(-1,1), main = "Phi Corr. Coef.")
+    plot(ROCR::performance(pred_obj, "sar", "cutoff"), main = "SAR Multi-Score")
+    
+    return(list(cutoff, perfMetricName, perfMetric))
+}
+
+
+```
+
+```{r opt_neuralnet, echo=FALSE, eval=FALSE}
+# Define functions in this chunk
+# opt_neuralnet <- function(param = "hidden", values = list(c(4), c(7), c(10)),
+#                           ) {
+#     nn <- neuralnet(fo, data = trainData,
+#                     hidden=2,
+#                     threshold = 0.01,
+#                     stepmax = 1e+5,
+#                     learningrate = 0.01,
+#                     lifesign = "full",
+#                     algorithm = "rprop+",
+#                     err.fct = "ce",
+#                     act.fct = "logistic",
+#                     linear.output = FALSE
+#                     )
+# }
+
+lr <- c(0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5)
+th <- c(0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5)
+
+for (i in 1:length(lr)) {
+    lr_var <- lr[i]
+    for (j in 1:length(th)) {
+        th_var <- th[j]
+        nn_int <- neuralnet(fo, data = trainData,
+                        hidden=5,
+                        threshold = th_var,
+                        stepmax = 1e+5,
+                        learningrate = lr_var,
+                        lifesign = "full",
+                        algorithm = "rprop+",
+                        err.fct = "ce",
+                        act.fct = "logistic",
+                        linear.output = FALSE
+                        )
+        pred_int <- compute(nn_int, covariate = cvInputs)
+        
+        ???
+    }
+}
+
+
 ```
