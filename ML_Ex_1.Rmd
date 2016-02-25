@@ -1,7 +1,7 @@
 ---
 title: "Machine Learning Examples"
 author: "Stan Mlekodaj"
-date: "February 19, 2016"
+date: "February 24, 2016"
 output: html_document
 ---
 ```{r overhead, echo=FALSE, message=FALSE}
@@ -70,7 +70,7 @@ Need to determine what predictor metric is important.
     
 ## Data Definitions
 
-```{r}
+```{r,echo=FALSE}
 ############ define data, model formula (training sets in rows) #######
 rawData <- infert
 
@@ -111,9 +111,36 @@ testInputs <- testData[, inCols]
 testOutputs <- testData[, outCols]
 ```
 
+## Linear Regression
+
+```{r,echo=FALSE}
+model_lm <- lm(fo, data = trainData)
+
+predict_cv_lm <- predict(model_lm, cvInputs)
+predict_test_lm <- predict(model_lm, testInputs)
+
+# Evaluate performance on cross-validation set
+cvCutoff_lm <- getCutoffAndPlot(predict_cv_lm, cvOutputs)
+cutoff_cv_lm <- cvCutoff_lm[[1]]
+perfMetricName_cv_lm <- cvCutoff_lm[[2]]
+perfMetric_cv_lm <- cvCutoff_lm[[3]]
+
+#Repeat on test set
+testCutoff_lm <- getCutoffAndPlot(predict_test_lm, testOutputs)
+cutoff_test_lm <- testCutoff_lm[[1]]
+perfMetricName_test_lm <- testCutoff_lm[[2]]
+perfMetric_test_lm <- testCutoff_lm[[3]]
+
+```
+
+
+Cross-Validation set `r perfMetricName_cv_lm` = `r round(perfMetric_cv_lm, 3)`
+
+Test set `r perfMetricName_test_lm` = `r round(perfMetric_test_lm, 3)`
+
 ## RSNNS Neural Network - MLP 
 
-```{r}
+```{r,echo=FALSE}
 # neural network using RSNNS 
 model <- mlp(trainInputs, trainOutputs,
              size=2,
@@ -194,9 +221,14 @@ perfMetric_test <- testCutoff[[3]]
 
 ```
 
+Cross-Validation set `r perfMetricName_cv` = `r round(perfMetric_cv, 3)`
+
+Test set `r perfMetricName_test` = `r round(perfMetric_test, 3)`
+
+
 ## neuralnet
 
-```{r}
+```{r,echo=FALSE}
 # neuralnet package
 nn <- neuralnet(fo, data = trainData,
                 hidden=2,
@@ -211,21 +243,32 @@ nn <- neuralnet(fo, data = trainData,
                 )
 
 nn
-nn_predict <- compute(nn, covariate = cvInputs)
+#plot(nn)
+# Cross-Validation & Test set Predictions
+nn_predict_cv <- compute(nn, covariate = cvInputs)
+nn_predict_test <- compute(nn, covariate = testInputs)
 
 # performance & cutoff selection
+# Evaluate performance on cross-validation set
+cvCutoff_nn <- getCutoffAndPlot(nn_predict_cv$net.result, cvOutputs)
+cutoff_cv_nn <- cvCutoff_nn[[1]]
+perfMetricName_cv_nn <- cvCutoff_nn[[2]]
+perfMetric_cv_nn <- cvCutoff_nn[[3]]
 
-confusionMatrix(trainOutputs, round(nn$net.result[[1]]))
-confusionMatrix(cvOutputs, round(nn_predict$net.result))
-confusionMatrix(testOutputs , round(compute(nn, covariate = testInputs)$net.result))
+#Repeat on test set
+testCutoff_nn <- getCutoffAndPlot(nn_predict_test$net.result, testOutputs)
+cutoff_test_nn <- testCutoff_nn[[1]]
+perfMetricName_test_nn <- testCutoff_nn[[2]]
+perfMetric_test_nn <- testCutoff_nn[[3]]
 
-
-out <- cbind(nn$covariate, nn$net.result[[1]])
-dimnames(out) <- list(NULL, c("age","parity","induced", "spontaneous","nn-output"))
-head(out)
-plot(nn)
-
-
+# confusionMatrix(trainOutputs, round(nn$net.result))
+# confusionMatrix(cvOutputs, round(nn_predict_cv$net.result))
+# confusionMatrix(testOutputs , round(compute(nn, covariate = testInputs)$net.result))
+# 
+# 
+# out <- cbind(nn$covariate, nn$net.result[[1]])
+# dimnames(out) <- list(NULL, c("age","parity","induced", "spontaneous","nn-output"))
+# head(out)
 
 
 # nn <- neuralnet(case~age+parity+induced+spontaneous,
@@ -253,28 +296,12 @@ plot(nn)
 
 ```
 
-## nnet vs neuralnet
+Cross-Validation set `r perfMetricName_cv_nn` = `r round(perfMetric_cv_nn, 3)`
 
-```{r}
-nn.bp <- neuralnet(fo, data = trainData,
-                hidden=2,
-                threshold = 0.01,
-                stepmax = 1e+5,
-                learningrate = 0.01,
-                lifesign = "full",
-                algorithm = "backprop",
-                err.fct = "ce",
-                act.fct = "logistic",
-                linear.output = FALSE
-                )
-nn.bp
+Test set `r perfMetricName_test_nn` = `r round(perfMetric_test_nn, 3)`
 
-nn.nnet <- nnet(fo, data = trainData, size = 2, entropy = T, abstol = 0.01)
-nn.nnet
-```
-
-```{r}
-
+##  Example from RSNNS R package documentation
+```{r,echo=FALSE}
 ####  Example from RSNNS R package documentation
 library(RSNNS)
 rm(list=ls())
@@ -311,7 +338,7 @@ method="402040", l=0.4, h=0.6))
 ```{r,echo=FALSE,fig.width=8,fig.height=6,fig.align='left',dpi=72,fig.retina=3}
 ```
 
-```{r}
+```{r, echo=FALSE, eval=FALSE}
 # example of using performance() function in ROCR
 # Currently, ROCR supports only binary classification
 # first need to create a prediction object. 
@@ -341,8 +368,8 @@ plot(perf_obj)
 # Returns cutoff and resulting accuracy. Also plots 4 metrics vs. cutoffs
 getCutoffAndPlot <- function(predicted, targets) {
    
-    par(mfrow=c(1,1))
-    plotROC(predicted, targets, main = "ROC Curve") # ROC curve
+#     par(mfrow=c(1,1))
+#     plotROC(predicted, targets, main = "ROC Curve") # ROC curve
     
     # make predicitons object using ROCR
     pred_obj <- ROCR::prediction(predicted, targets) # nerualnet also has prediction()
