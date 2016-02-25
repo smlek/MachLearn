@@ -26,28 +26,34 @@ library(ROCR)
 ```
 
 ## R Packages for Machine Learning
-nnet
-neuralnet
-randomForest
-RSNNS
+- nnet
+- neuralnet
+- randomForest
+- RSNNS
+- deepnet
+- H20   (several models including deep learning)
+- caret (high level, interfaces with other models)
+- rpart (decision trees) Also partykit package for visualization.
 
 ## To-Do's
-
-Training outputs skewness check
-Feature normalization (caret package?)
-Gradient Checking
-Selecting model complexity (polynomial degree) vs. cross-validation error
-Selecting lambda (regularization parameter) vs. CV error
-Plotting Learning Curve to detect high bias or variance
-Error analysis in CV errors. Trying to categorize CV error sets.
-Determine threshold for output classification
-    Use performance() function to plot measures vs. cutoff.
-    Currently, ROCR supports only binary classification.
-F Score, Accuracy, Precision, Recall
+- Training outputs skewness check
+- Feature selection/elimination (some models do automatically. Also caret )
+- Feature normalization (caret package?)
+- Gradient Checking (usually not possible with off the shelf packages)
+- Selecting model complexity (polynomial degree) vs. cross-validation error (caret)
+- Selecting lambda (regularization parameter) vs. CV error (caret grid)
+- Plotting Learning Curve to detect high bias or variance (mlp in RSNNS)
+- Error analysis in CV errors. Trying to categorize CV error sets.
+- Determine threshold for output classification
+    * Use performance() function to plot measures vs. cutoff.
+    * Currently, ROCR supports only binary classification.
+    * caret also has tuneGrid input in train()
+- F Score, Accuracy, Precision, Recall
 
 ## General flow
 
     1. Define data inputs, ouputs. Make sure outputs are ~50/50 outcomes (not skewed)
+        a. Feature selection/elimination
     2. normalize data (except ouputs when binary)
     3. Split data into training, cross-validation, test sets
     4. Train model on training set

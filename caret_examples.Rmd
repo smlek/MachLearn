@@ -1,0 +1,179 @@
+---
+title: "Caret Examples"
+subtitle: "Taken from Max Kuhn document"
+author: "Stan Mlekodaj"
+date: "February 25, 2016"
+output: html_document
+---
+
+```{r overhead, echo=FALSE, message=FALSE}
+# General environment setup
+# Clear variables
+rm(list=ls())
+set.seed(18)
+# all par settings which could be changed.
+old.par <- par(no.readonly = TRUE)
+# Load required packages
+#library(knitr)
+#library(xtable)
+#library(data.table)
+#library(nnet)
+#library(neuralnet)
+#library(randomForest)
+#library(RSNNS)
+#library(ROCR)
+library(caret)
+```
+```{r, ref.label="functions", echo=FALSE}
+#runs chunk with all function definitions
+```
+
+
+
+## Source
+"Predictive Modeling with R and the caret Package"
+
+Max Kuhn, 2013
+
+[link](https://www.r-project.org/nosvn/conferences/useR-2013/Tutorials/kuhn/user_caret_2up.pdf)
+
+## Demo
+```{r,echo=FALSE}
+
+data(segmentationData)
+# get rid of the cell identifier
+segmentationData$Cell <- NULL
+
+training <- subset(segmentationData, Case == "Train")
+testing <- subset(segmentationData, Case == "Test")
+training$Case <- NULL
+testing$Case <- NULL
+str(training[,1:6])
+
+# First, estimate the standardization parameters:
+trainX <- training[, names(training) != "Class"]
+## Methods are "BoxCox", "YeoJohnson", center", "scale",
+## "range", "knnImpute", "bagImpute", "pca", "ica" and
+## "spatialSign"
+preProcValues <- preProcess(trainX, method = c("center", "scale"))
+preProcValues
+
+# Apply them to the data sets:
+scaledTrain <- predict(preProcValues, trainX)
+
+# Decision Tree
+library(rpart)
+rpart1 <- rpart(Class ~ ., data = training, control = rpart.control(maxdepth = 2))
+rpart1
+
+library(partykit)
+rpart1a <- as.party(rpart1)
+plot(rpart1a)
+plot(rpart1)
+
+rpartFull <- rpart(Class ~ ., data = training)
+rpartFull
+plot(as.party(rpartFull))
+
+rpartPred <- predict(rpartFull, testing, type = "class")
+confusionMatrix(rpartPred, testing$Class) # requires 2 factor vectors
+## SAME AS IN DOCUMENT
+
+## Make some random example data to show usage of twoClassSummary()
+fakeData <- data.frame(pred = testing$Class, obs = sample(testing$Class),
+                    ## Requires a column for class probabilities
+                    ## named after the first level
+                    PS = runif(nrow(testing)))
+library(pROC)
+twoClassSummary(fakeData, lev = levels(fakeData$obs))
+
+# Using train() function
+cvCtrl <- trainControl(method = "repeatedcv", repeats = 3,
+                       summaryFunction = twoClassSummary,
+                       classProbs = TRUE
+                       )
+set.seed(1)
+rpartTune <- train(Class ~ ., data = training, method = "rpart",
+                   tuneLength = 30,
+                   metric = "ROC",
+                   trControl = cvCtrl
+                   )
+rpartTune
+# Resampled ROC Profile
+plot(rpartTune, scales = list(x = list(log = 10)))
+
+rpartPred2 <- predict(rpartTune, testing)
+confusionMatrix(rpartPred2, testing$Class)
+
+rpartProbs <- predict(rpartTune, testing, type = "prob")
+head(rpartProbs)
+
+rpartROC <- roc(testing$Class, rpartProbs[, "PS"], levels = rev(testing$Class)) # correction in levels=
+plot(rpartROC, type = "S", print.thres = .5)
+rpartROC
+
+grid <- expand.grid(.model = "tree",
+                    .trials = c(1:100),
+                    .winnow = FALSE
+                    )
+# this takes a long time
+# uses unscaled inputs
+set.seed(1)  # added
+c5Tune <- train(trainX, training$Class,
+                method = "C5.0",
+                metric = "ROC",
+                tuneGrid = grid,
+                trControl = cvCtrl
+                )
+c5Tune
+plot(c5Tune) # visualize benefit vs. boosting iterations
+c5Pred <- predict(c5Tune, testing)
+confusionMatrix(c5Pred, testing$Class)
+c5Probs <- predict(c5Tune, testing, type = "prob")
+head(c5Probs, 3)
+c5ROC <- roc(predictor = c5Probs$PS, response = testing$Class, levels = rev(levels(testing$Class)))
+c5ROC
+plot(rpartROC, type = "S")
+plot(c5ROC, add = TRUE, col = "#9E0142")
+
+histogram(~c5Probs$PS|testing$Class, xlab = "Probability of Poor Segmentation")
+
+
+set.seed(1)
+svmTune <- train(x = trainX,
+                 y = training$Class,
+                 method = "svmRadial",
+                 # The default grid of cost parameters go from 2^-2,
+                 # 0.5 to 1,
+                 # Well fit 9 values in that sequence via the tuneLength argument.
+                 tuneLength = 9,
+                 ## Also add options from preProcess here too
+                 preProcess = c("center", "scale"),
+                 metric = "ROC",
+                 trControl = cvCtrl
+                 )
+svmTune
+svmTune$finalModel
+plot(svmTune, metric = "ROC", scales = list(x = list(log = 2)))
+svmPred <- predict(svmTune, testing[, names(testing) != "Class"])
+confusionMatrix(svmPred, testing$Class)
+
+# Comparing Models Using Resampling
+cvValues <- resamples(list(CART = rpartTune, SVM = svmTune, C5.0 = c5Tune))
+summary(cvValues)
+# Visualizing the Resamples
+splom(cvValues, metric = "ROC")
+xyplot(cvValues, metric = "ROC")
+parallelplot(cvValues, metric = "ROC")
+dotplot(cvValues, metric = "ROC")
+
+# We can also test to see if there are di↵erences between the models:
+rocDiffs <- diff(cvValues, metric = "ROC")
+summary(rocDiffs)
+
+```
+
+```{r functions, echo=FALSE, eval=FALSE}
+# Define functions in this chunk
+
+```
