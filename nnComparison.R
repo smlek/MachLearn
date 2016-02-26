@@ -24,5 +24,8 @@ nn.bp <- neuralnet(fo, data = trainData,
 )
 nn.bp
 
+# also try: caret, 
+
+
 nn.nnet <- nnet(fo, data = trainData, size = 2, entropy = T, abstol = 0.01)
 nn.nnet

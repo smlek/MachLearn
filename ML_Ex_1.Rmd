@@ -50,6 +50,22 @@ library(ROCR)
     * caret also has tuneGrid input in train()
 - F Score, Accuracy, Precision, Recall
 
+
+## H2O Package
+Installation requires Rcurl, jsonlite & statmod packages required.  Need to specify
+repos if R gives error such as this:
+
+"Package which is only available in source form, and may need compilation of C/C++/Fortran: ‘statmod'"
+
+        install.packages("RCurl", repos="http://cran.us.r-project.org")
+        install.packages("jsonlite", repos="http://cran.us.r-project.org")
+        install.packages("statmod", repos="http://cran.us.r-project.org")
+
+install.packages("h2o")
+
+or (preferred), download latest version from [link](http://www.h2o.ai/download/)
+
+
 ## General flow
 
     1. Define data inputs, ouputs. Make sure outputs are ~50/50 outcomes (not skewed)
@@ -74,6 +90,11 @@ Need to determine what predictor metric is important.
     6. report performance metrics for that cutoff
     7. predict on testInputs, report performance
     
+## Lessons learned
+- neural networks
+    SOme literature suggests tanh over logistic function produces better results because
+    it is symmetric around 0.
+    
 ## Data Definitions
 
 ```{r,echo=FALSE}
@@ -81,7 +102,7 @@ Need to determine what predictor metric is important.
 rawData <- infert
 
 # model formula definition (neuralnet, nnet)
-fo <- formula("case ~ age+parity+induced+spontaneous")
+fo <- formula("case ~ age + parity + induced + spontaneous")
 
 # input & output column indexes
 inCols <- c(2, 3, 4, 6)
@@ -117,10 +138,18 @@ testInputs <- testData[, inCols]
 testOutputs <- testData[, outCols]
 ```
 
+Input Data Information:
+
+- `r ncol(trainInputs)` input features
+- `r ncol(trainOutputs)` outputs
+- `r nInputs` total data sets
+
+
 ## Linear Regression
 
 ```{r,echo=FALSE}
 model_lm <- lm(fo, data = trainData)
+model_lm
 
 predict_cv_lm <- predict(model_lm, cvInputs)
 predict_test_lm <- predict(model_lm, testInputs)
@@ -139,10 +168,39 @@ perfMetric_test_lm <- testCutoff_lm[[3]]
 
 ```
 
-
 Cross-Validation set `r perfMetricName_cv_lm` = `r round(perfMetric_cv_lm, 3)`
 
 Test set `r perfMetricName_test_lm` = `r round(perfMetric_test_lm, 3)`
+
+# Generalized Linear Model
+
+```{r,echo=FALSE}
+model_glm <- glm(fo, data = trainData, family = binomial())
+model_glm
+
+# same as using glm()
+glmTune <- train(fo, data = trainData, method = "glm",  family = binomial())
+glmTune
+
+predict_cv_glm <- predict(model_glm, cvInputs)
+predict_test_glm <- predict(model_glm, testInputs)
+
+# Evaluate performance on cross-validation set
+cvCutoff_glm <- getCutoffAndPlot(predict_cv_glm, cvOutputs)
+cutoff_cv_glm <- cvCutoff_glm[[1]]
+perfMetricName_cv_glm <- cvCutoff_glm[[2]]
+perfMetric_cv_glm <- cvCutoff_glm[[3]]
+
+#Repeat on test set
+testCutoff_glm <- getCutoffAndPlot(predict_test_glm, testOutputs)
+cutoff_test_glm <- testCutoff_glm[[1]]
+perfMetricName_test_glm <- testCutoff_glm[[2]]
+perfMetric_test_glm <- testCutoff_glm[[3]]
+```
+
+Cross-Validation set `r perfMetricName_cv_glm` = `r round(perfMetric_cv_glm, 3)`
+
+Test set `r perfMetricName_test_glm` = `r round(perfMetric_test_glm, 3)`
 
 ## RSNNS Neural Network - MLP 
 

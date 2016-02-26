@@ -1,0 +1,48 @@
+---
+title: "GLM Comparison using H2O, Caret & Base Packages"
+author: "Stan Mlekodaj"
+date: "February 26, 2016"
+output: html_document
+---
+```{r overhead, echo=FALSE, message=FALSE}
+# General environment setup
+# Clear variables
+rm(list=ls())
+set.seed(18)
+# all par settings which could be changed.
+old.par <- par(no.readonly = TRUE)
+# Load required packages
+library(h2o)
+```
+```{r, ref.label="functions", echo=FALSE}
+#runs chunk with all function definitions
+```
+
+```{r,echo=FALSE}
+# Initialization
+h2o.init(nthreads = -1) # max # of cores
+# import data file
+path = system.file("extdata", "prostate.csv", package = "h2o")
+h2o_df = h2o.importFile(path)
+h2o_df$CAPSULE = as.factor(h2o_df$CAPSULE)
+
+# train/test segmentation
+rand_vec <- h2o.runif(h2o_df, seed = 1234)
+train <- h2o_df[rand_vec <= 0.8,]
+valid <- h2o_df[rand_vec > 0.8,]
+
+# model fitting
+binomial.fit = h2o.glm(y = "CAPSULE", 
+                       x = c("AGE", "RACE", "PSA", "GLEASON"),
+                       training_frame = train,
+                       validation_frame = valid, 
+                       family = "binomial"
+                       )
+print(binomial.fit)
+
+```
+
+```{r functions, echo=FALSE, eval=FALSE}
+# Define functions in this chunk
+```
+
