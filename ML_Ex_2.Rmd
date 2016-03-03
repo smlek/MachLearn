@@ -1,7 +1,8 @@
 ---
 title: "Machine Learning Examples"
+subtitle: "Artificial data set"
 author: "Stan Mlekodaj"
-date: "February 24, 2016"
+date: "February 29, 2016"
 output: html_document
 ---
 ```{r overhead, echo=FALSE, message=FALSE}
@@ -55,6 +56,38 @@ library(ROCR)
 Idea:  Create input/output data set from a set of equations & random variables. 
 This will create a known model with known correlations & variable importance.
 
+```{r echo=FALSE}
+# linear output data set
+samples <- 1000
+
+# linear output
+# feat1 = rnorm(samples)
+# feat2 = rnorm(samples)
+# feat3 = 0.5 * (feat1 + rnorm(samples))
+# feat4 = 0.9 * feat2
+# feat5 = rnorm(samples)
+# features <- data.frame(feat1, feat2, feat3, feat4, feat5)
+# features <- scale(features,
+#                   center = c(-5, 3, 50, 1000, -200), 
+#                   scale = c(1/5, 1/3, 1/50, 1/1000, 1/200)
+#                   )
+# output = 7 + 0.1*feat1 + 0.2*feat2 + 0.3*feat3
+# arbData <- data.frame(features, output)
+
+# logistic output
+output <- round(runif(samples))
+feat1 <- 0.10 * output + rnorm(samples)
+feat2 <- 0.25 * output + rnorm(samples)
+feat3 <- 0.50 * output + rnorm(samples)
+#eat3 <- 0.50 * (feat1 + rnorm(samples))
+#feat4 <- 0.90 * feat2
+feat4 <- 0.90 * output + rnorm(samples)
+feat5 <- rnorm(samples)
+arbData <- data.frame(feat1, feat2, feat3, feat4, feat5, output)
+
+head(arbData)
+
+```
 
 ## H2O Package
 Installation requires Rcurl, jsonlite & statmod packages required.  Need to specify
@@ -74,8 +107,9 @@ or (preferred), download latest version from [link](http://www.h2o.ai/download/)
 ## General flow
 
     1. Define data inputs, ouputs. Make sure outputs are ~50/50 outcomes (not skewed)
-        a. Feature selection/elimination
+        a. Feature selection/elimination, PCA
     2. normalize data (except ouputs when binary)
+        a. dimensionality reduction/PCA (optional) 
     3. Split data into training, cross-validation, test sets
     4. Train model on training set
     5. Tune model parameters for best cross-validation performance
@@ -97,26 +131,46 @@ Need to determine what predictor metric is important.
     
 ## Lessons learned
 - neural networks
-    SOme literature suggests tanh over logistic function produces better results because
+    - SOme literature suggests tanh over logistic function produces better results because 
     it is symmetric around 0.
+    - neuralnet() does not take "y ~ ." type of formula. Must write out long formula instead.
+    
     
 ## Data Definitions
 
 ```{r,echo=FALSE}
 ############ define data, model formula (training sets in rows) #######
-rawData <- infert
+rawData <- arbData
 
 # model formula definition (neuralnet, nnet)
-fo <- formula("case ~ age + parity + induced + spontaneous")
+#fo <- formula("output ~ .")
+# this approach ensures compatibility with neuralnet() which does not take "y ~ ."
+n <- names(rawData)
+fo <- as.formula(paste("output ~", paste(names(rawData)[!n %in% "output"], collapse = " + ")))
 
 # input & output column indexes
-inCols <- c(2, 3, 4, 6)
-outCols <- c(5)
+inCols <- c(1:5)
+outCols <- c(6)
 
 # Which columns to normalize - 0/1 outputs/inputs dont need scaling.
-normCols <- c(2, 3, 4, 6, 7, 8)
-
+normCols <- c(1:5)
+#normCols <- c()
 #######################################################################
+
+# ############ define data, model formula (training sets in rows) #######
+# rawData <- infert
+# 
+# # model formula definition (neuralnet, nnet)
+# fo <- formula("case ~ age + parity + induced + spontaneous")
+# 
+# # input & output column indexes
+# inCols <- c(2, 3, 4, 6)
+# outCols <- c(5)
+# 
+# # Which columns to normalize - 0/1 outputs/inputs dont need scaling.
+# normCols <- c(2, 3, 4, 6, 7, 8)
+# #######################################################################
+
 nInputs <- nrow(rawData)
 featureNames <- colnames(rawData)
 
@@ -145,9 +199,15 @@ testOutputs <- testData[, outCols]
 
 Input Data Information:
 
-- `r ncol(trainInputs)` input features
-- `r ncol(trainOutputs)` outputs
-- `r nInputs` total data sets
+- Number of input features:  `r length(inCols)`
+- Number of outputs:         `r length(outCols)`
+- Number of total data sets: `r nInputs`
+
+
+|            |Training Data            | Cross-Validation Data | Test Data              |
+|------------|-------------------------|-----------------------|------------------------|
+|Skewness    | `r table(trainOutputs)` | `r table(cvOutputs) ` | `r table(testOutputs)` |
+|Data Sets   | `r nrow(trainData)`     | `r nrow(cvData) `     | `r nrow(testData)`     |
 
 
 ## Linear Regression
@@ -180,12 +240,14 @@ Test set `r perfMetricName_test_lm` = `r round(perfMetric_test_lm, 3)`
 # Generalized Linear Model
 
 ```{r,echo=FALSE}
+model_glm <- glm(fo, data = trainData, family = gaussian())
 model_glm <- glm(fo, data = trainData, family = binomial())
 model_glm
 
-# same as using glm()
-glmTune <- train(fo, data = trainData, method = "glm",  family = binomial())
-glmTune
+# caret: same as using glm()
+# library(caret)
+# glmTune <- train(fo, data = trainData, method = "glm",  family = binomial())
+# glmTune
 
 predict_cv_glm <- predict(model_glm, cvInputs)
 predict_test_glm <- predict(model_glm, testInputs)
@@ -312,7 +374,8 @@ nn <- neuralnet(fo, data = trainData,
                 )
 
 nn
-#plot(nn)
+summary(nn)
+plot(nn)
 # Cross-Validation & Test set Predictions
 nn_predict_cv <- compute(nn, covariate = cvInputs)
 nn_predict_test <- compute(nn, covariate = testInputs)
@@ -330,37 +393,7 @@ cutoff_test_nn <- testCutoff_nn[[1]]
 perfMetricName_test_nn <- testCutoff_nn[[2]]
 perfMetric_test_nn <- testCutoff_nn[[3]]
 
-# confusionMatrix(trainOutputs, round(nn$net.result))
-# confusionMatrix(cvOutputs, round(nn_predict_cv$net.result))
-# confusionMatrix(testOutputs , round(compute(nn, covariate = testInputs)$net.result))
-# 
-# 
-# out <- cbind(nn$covariate, nn$net.result[[1]])
-# dimnames(out) <- list(NULL, c("age","parity","induced", "spontaneous","nn-output"))
-# head(out)
 
-
-# nn <- neuralnet(case~age+parity+induced+spontaneous,
-#             data=trainData, hidden=2, err.fct="ce",
-#             threshold = 0.01,
-#             lifesign = "full",
-#             stepmax = 1e+5,
-#             rep = 1,
-#             linear.output=FALSE
-#             )
-# 
-
-# 
-# for (i in 1:500){
-#     nn <- neuralnet(case~age+parity+induced+spontaneous,
-#                 data=trainData, hidden=2, err.fct="ce",
-#                 threshold = 1e5,
-#                 startweights = nn$weights,
-#                 lifesign = "full",
-#                 stepmax = 1,
-#                 linear.output=FALSE
-#                 )
-# }
 
 
 ```

@@ -162,8 +162,6 @@ svmPred <- predict(svmTune, testing[, names(testing) != "Class"])
 confusionMatrix(svmPred, testing$Class)
 
 
-
-
 set.seed(1)
 glmTune <- train(Class ~ ., data = training, method = "glm",
                   # tuneLength = 30,
