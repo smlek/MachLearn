@@ -10,11 +10,14 @@ modelstd <- mlp(trainInputs, trainOutputs,
                 inputsTest = cvInputs,
                 targetsTest = cvOutputs
 )
-modelstd <- mlp(trainInputs, trainOutputs,
+modelstd <- mlp(x = trainInputs, 
+                y = (as.numeric(trainOutputs)-1),
                 size=5,
                 learnFunc="Quickprop", 
                 learnFuncParams=c(0.1, 2.0, 0.0001, 0.1),
                 maxit=500,
+                inputsTest = testInputs,
+                targetsTest = testOutputs,
                 linOut = FALSE
 )
 modelstd <- mlp(trainInputs, trainOutputs,
