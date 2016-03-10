@@ -2,31 +2,47 @@
 
 # standard backprop
 library(RSNNS)
-modelstd <- mlp(trainInputs, trainOutputs,
+model <- mlp(trainInputs, trainOutputs,
                 size=5,
-                learnFunc="Std_Backpropagation", learnFuncParams=c(0.01, 0),
+                learnFunc="Std_Backpropagation", learnFuncParams=c(0.02, 0),
                 maxit=500,
                 linOut = FALSE,
-                inputsTest = cvInputs,
-                targetsTest = cvOutputs
+                inputsTest = testInputs,
+                targetsTest = testOutputs
 )
-modelstd <- mlp(x = trainInputs, 
-                y = (as.numeric(trainOutputs)-1),
-                size=5,
+model <- mlp(x = trainInputs, 
+                y = as.numeric(trainOutputs),
+                size=c(5,3),
                 learnFunc="Quickprop", 
-                learnFuncParams=c(0.1, 2.0, 0.0001, 0.1),
+                learnFuncParams=c(0.01, 2.0, 0.0001, 0.1),
+                maxit=100,
+                inputsTest = testInputs,
+                targetsTest = testOutputs,
+                linOut = FALSE
+)
+model <- mlp(x = trainInputs, 
+             y = as.numeric(trainOutputs),
+             #y = trainOutputs,
+                size=5,
+                learnFunc="BackpropWeightDecay", 
+                learnFuncParams=c(0.1, .0005, 0, 0),
                 maxit=500,
                 inputsTest = testInputs,
                 targetsTest = testOutputs,
                 linOut = FALSE
 )
-modelstd <- mlp(trainInputs, trainOutputs,
-                size=5,
-                learnFunc="BackpropWeightDecay", 
-                learnFuncParams=c(0.2, .01, 0, 0),
-                maxit=500,
-                linOut = FALSE
-)
+#print(model)
+summary(model)
+# predict on test set
+predict_test <- predict(model, testInputs)
+
+# Initial model plots on cross-validation data
+par(mfrow=c(2,2))
+plotIterativeError(model, ylim = errlim) # SSE error vs. training iteration
+plotRegressionError(testOutputs, predict_test) # regression quality
+plotROC(fitted.values(model), trainOutputs) # ROC on training data
+plotROC(predict_test, testOutputs)
+
 detach(RSNNS)
 
 ## nnet vs neuralnet

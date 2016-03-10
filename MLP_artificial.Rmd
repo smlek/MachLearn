@@ -1,0 +1,569 @@
+---
+title: "MLP on Artificial Data"
+author: "Stan Mlekodaj"
+date: "March 8, 2016"
+output: html_document
+---
+
+```{r overhead, echo=FALSE, message=FALSE}
+# General environment setup
+# Clear variables
+rm(list=ls())
+# all par settings which could be changed.
+old.par <- par(no.readonly = TRUE)
+# Load required packages
+#library(knitr)
+#library(xtable)
+#library(data.table)
+#library(nnet)
+#library(neuralnet)
+#library(randomForest)
+library(RSNNS)
+#library(ROCR)
+#library(caret)
+```
+```{r, ref.label="functions", echo=FALSE}
+#runs chunk with all function definitions
+```
+
+## To-Do's
+
+- Elman/Jordan network (elman, jordan)
+- Autoassociative Networks (assoz)
+- BackpropThroughTime
+- BackpropMomentum
+
+
+
+## Lessons learned
+- mlp() function (and probably others in RSNNS) want matrix input, not DF
+
+## Artificial data set for model testing
+Idea:  Create input/output data set from a set of equations & random variables. 
+This will create a known model with known correlations & variable importance.
+
+```{r echo=FALSE}
+# linear output data set
+samples <- 1000
+
+# logistic output
+#output <- round(runif(samples))
+output <- 2*runif(samples)
+
+feat1 <- 0.8 * output + rnorm(samples)
+feat2 <- -0.5 * output + rnorm(samples)
+feat3 <- feat2^2
+feat4 <- rnorm(samples)
+#output <- factor(output, levels=c("0","1"), labels=c("Down","Up"))
+arbData <- data.frame(feat1, feat2, feat3, feat4, output)
+
+head(arbData)
+
+```
+
+    
+## Data Definitions
+
+```{r,echo=FALSE}
+############ define data, model formula (training sets in rows) #######
+rawData <- arbData
+
+# model formula definition (neuralnet, nnet)
+#fo <- formula("output ~ .")
+# this approach ensures compatibility with neuralnet() which does not take "y ~ ."
+n <- names(rawData)
+allOutColNames <- "output"
+outputColumn <- "output"
+inColNames <- n[!(n %in% allOutColNames)]
+fo <- as.formula(paste(outputColumn, "~", paste(inColNames, collapse = " + ")))
+
+# input & output column indexes
+inCols <- which(n %in% inColNames)
+outCols <- which(n %in% outputColumn)
+
+# Which columns to normalize - 0/1 outputs/inputs dont need scaling.
+normCols <- inCols
+
+deCorrelateInputs <- FALSE
+#######################################################################
+
+allData <- rawData
+data_size <- nrow(allData)
+featureNames <- colnames(allData)
+
+# shuffle & split data in training and test sets 
+# Cross-Validation set omitted since using repeatedcv in caret
+allData <- allData[sample(data_size), ]
+splitIndex <- data_size * 0.8
+trainData <- allData[1 : splitIndex, ]
+testData <- allData[(splitIndex + 1) : data_size, ]
+
+# # Feature Normalization
+# allData[ , normCols] <- normalizeData(rawData[ , normCols], type = "norm") #also type = "0_1" or "center"
+# # randomize rows
+# allData <- allData[sample(data_size), ]
+# 
+# # split data in training, cross-validation, and test sets
+# trainBreak <- data_size * 0.6 # 60% train
+# cvBreak <- data_size * 0.8    # 20% cv, 20% test
+# trainData <- allData[1 : trainBreak, ]
+# cvData <- allData[(trainBreak + 1) : cvBreak, ]
+# testData <- allData[(cvBreak + 1) : data_size, ]
+
+# split into input & output matrixes 
+trainInputs <- as.matrix(trainData[, inCols])
+trainOutputs <- trainData[, outCols]
+testInputs <- as.matrix(testData[, inCols])
+testOutputs <- testData[, outCols]
+
+# # Input Normalization (caret) - center/scale
+# preProcValues <- preProcess(trainInputs, method = c("center", "scale"))
+# trainInputs <- predict(preProcValues, trainInputs)
+# # test inputs normalized using training data normalization values
+# testInputs <- predict(preProcValues, testInputs)
+
+# # Input Normalization (RSNNS) - center/scale
+trainInputs <- normalizeData(trainInputs, type = "norm") #also type = "0_1" or "center"
+# # test inputs normalized using training data normalization values
+testInputs <- normalizeData(testInputs, type = attr(trainInputs, "normParams")) 
+
+# Remove correlated inputs
+if(deCorrelateInputs) {
+    corCols <- findCorrelation(cor(trainInputs), cutoff = 0.9, names = FALSE )
+    if(length(corCols) > 0) {
+            trainInputs <- trainInputs[, -corCols]
+            testInputs <- testInputs[, -corCols]  
+    }
+    
+}
+# # Input Normalization - PCA
+# preProcValuesPCA <- preProcess(trainInputs, method = "pca")
+# trainInputs <- predict(preProcValuesPCA, trainInputs)
+# # test inputs normalized using training data normalization values
+# testInputs <- predict(preProcValuesPCA, testInputs)
+```
+
+Raw Input Data Information:
+
+- Number of input features:  `r length(inCols)`
+- Number of outputs:         `r length(outCols)`
+- Number of total data sets: `r data_size`
+
+
+|            |Training Data            | Test Data              |
+|------------|-------------------------|------------------------|
+|Skewness    | `r table(trainOutputs)` | `r table(testOutputs)` |
+|Data Sets   | `r nrow(trainData)`     | `r nrow(testData)`     |
+
+Prediction Formula:  `r fo`
+
+## Reduced Data Set
+
+Correlated inputs removed? `r deCorrelateInputs `
+
+Columns removed from original data:
+
+`r names(trainInputs)[corCols]`
+
+Reduced Input Data Information:
+
+- Number of input features:  `r ncol(trainInputs)`
+- Output:                 :  `r outputColumn`
+
+
+## MLP Weight Decay
+
+```{r,echo=FALSE}
+#library(RSNNS)
+model <- mlp(x = trainInputs, 
+                #y = as.numeric(trainOutputs),
+                y = trainOutputs,
+                size=4,
+                maxit=500,
+                #size = C(4,2)
+                learnFunc="BackpropWeightDecay", 
+                learnFuncParams=c(0.01, .00005, 0, 0),
+                inputsTest = testInputs,
+                targetsTest = testOutputs,
+                linOut = TRUE
+)
+#print(model)
+summary(model)
+# predict on test set
+predict_test <- predict(model, testInputs)
+
+# Initial model plots on cross-validation data
+par(mfrow=c(2,2))
+#errlim <- range(c(range(model$IterativeFitError),range(model$IterativeTestError)))
+plotIterativeError(model) # SSE error vs. training iteration
+plotRegressionError(testOutputs, predict_test) # regression quality
+plotROC(fitted.values(model), trainOutputs) # ROC on training data
+plotROC(predict_test, testOutputs)
+
+# #Repeat on test set
+# testCutoff <- getCutoffAndPlot(predict_test, testOutputs)
+# cutoff_test <- testCutoff[[1]]
+# perfMetricName_test <- testCutoff[[2]]
+# perfMetric_test <- testCutoff[[3]]
+
+
+```
+
+## MLP RPROP
+```{r,echo=FALSE}
+#library(RSNNS)
+model <- mlp(x = trainInputs, 
+                #y = as.numeric(trainOutputs),
+                y = trainOutputs,
+                size=4,
+                maxit=500,
+                #size = C(4,2)
+                learnFunc="Rprop", 
+                learnFuncParams=c(0.01, 50, 6),
+                inputsTest = testInputs,
+                targetsTest = testOutputs,
+                linOut = FALSE
+)
+#print(model)
+summary(model)
+# predict on test set
+predict_test <- predict(model, testInputs)
+
+# Initial model plots on cross-validation data
+par(mfrow=c(2,2))
+#errlim <- range(c(range(model$IterativeFitError),range(model$IterativeTestError)))
+plotIterativeError(model) # SSE error vs. training iteration
+plotRegressionError(testOutputs, predict_test) # regression quality
+plotROC(fitted.values(model), trainOutputs) # ROC on training data
+plotROC(predict_test, testOutputs)
+
+```
+
+## MLP BackpropMomentun
+```{r,echo=FALSE}
+#library(RSNNS)
+model <- mlp(x = trainInputs, 
+                #y = as.numeric(trainOutputs),
+                y = trainOutputs,
+                size=4,
+                maxit=500,
+                #size = C(4,2)
+                learnFunc="BackpropMomentum", 
+                learnFuncParams=c(0.01, 0.5, 0.1, 0),
+                inputsTest = testInputs,
+                targetsTest = testOutputs,
+                linOut = FALSE
+)
+#print(model)
+summary(model)
+# predict on test set
+predict_test <- predict(model, testInputs)
+
+# Initial model plots on cross-validation data
+par(mfrow=c(2,2))
+#errlim <- range(c(range(model$IterativeFitError),range(model$IterativeTestError)))
+plotIterativeError(model) # SSE error vs. training iteration
+plotRegressionError(testOutputs, predict_test) # regression quality
+plotROC(fitted.values(model), trainOutputs) # ROC on training data
+plotROC(predict_test, testOutputs)
+
+```
+
+## MLP RpropMAP
+```{r,echo=FALSE}
+#library(RSNNS)
+model <- mlp(x = trainInputs, 
+                #y = as.numeric(trainOutputs),
+                y = trainOutputs,
+                size=4,
+                maxit=500,
+                #size = C(4,2)
+                learnFunc="RpropMAP", 
+                learnFuncParams=c(0.01, 0.01, 0.00005, 20, 0),
+                inputsTest = testInputs,
+                targetsTest = testOutputs,
+                linOut = FALSE
+)
+#print(model)
+summary(model)
+# predict on test set
+predict_test <- predict(model, testInputs)
+
+# Initial model plots on cross-validation data
+par(mfrow=c(2,2))
+#errlim <- range(c(range(model$IterativeFitError),range(model$IterativeTestError)))
+plotIterativeError(model) # SSE error vs. training iteration
+plotRegressionError(testOutputs, predict_test) # regression quality
+plotROC(fitted.values(model), trainOutputs) # ROC on training data
+plotROC(predict_test, testOutputs)
+
+```
+
+## Autoassociative Networks
+```{r,echo=FALSE}
+model <- assoz(x = ,
+               dimX = ,
+               dimY = ,
+               maxit = 100,
+               initFunc = "RM_Random_Weights",
+               initFuncParams = c(1, -1),
+               learnFunc = "RM_delta", 
+               learnFuncParams = c(0.01, 100, 0, 0, 0),
+               updateFunc = "Auto_Synchronous", 
+               updateFuncParams = c(50),
+               shufflePatterns = TRUE
+               )
+
+
+
+summary(model)
+# predict on test set
+predict_test <- predict(model, testInputs)
+
+# Initial model plots on cross-validation data
+par(mfrow=c(2,2))
+#errlim <- range(c(range(model$IterativeFitError),range(model$IterativeTestError)))
+plotIterativeError(model) # SSE error vs. training iteration
+plotRegressionError(testOutputs, predict_test) # regression quality
+plotROC(fitted.values(model), trainOutputs) # ROC on training data
+plotROC(predict_test, testOutputs)
+```
+
+## Elman
+```{r,echo=FALSE}
+model <- elman(x = trainInputs,
+                    y = trainOutputs,
+                    size=4,
+                    maxit=500,
+                    initFunc = "JE_Weights",
+                    initFuncParams = c(1, -1, 0.3, 1, 0.5),
+                    learnFunc = "JE_BP",
+                    learnFuncParams = c(0.2),
+                    updateFunc = "JE_Order",
+                    updateFuncParams = c(0),
+                    inputsTest = testInputs,
+                    targetsTest = testOutputs,
+                    linOut = FALSE
+                    )
+summary(model)
+# predict on test set
+predict_test <- predict(model, testInputs)
+
+# Initial model plots on cross-validation data
+par(mfrow=c(2,2))
+#errlim <- range(c(range(model$IterativeFitError),range(model$IterativeTestError)))
+plotIterativeError(model) # SSE error vs. training iteration
+plotRegressionError(testOutputs, predict_test) # regression quality
+plotROC(fitted.values(model), trainOutputs) # ROC on training data
+plotROC(predict_test, testOutputs)
+```
+
+## Jordan
+```{r,echo=FALSE}
+model <- jordan(x = trainInputs,
+                    y = trainOutputs,
+                    size=4,
+                    maxit=500,
+                    initFunc = "JE_Weights",
+                    initFuncParams = c(1, -1, 0.3, 1, 0.5),
+                    learnFunc = "JE_BP",
+                    learnFuncParams = c(0.2),
+                    updateFunc = "JE_Order",
+                    updateFuncParams = c(0),
+                    inputsTest = testInputs,
+                    targetsTest = testOutputs,
+                    linOut = FALSE
+                    )
+summary(model)
+# predict on test set
+predict_test <- predict(model, testInputs)
+
+# Initial model plots on cross-validation data
+par(mfrow=c(2,2))
+#errlim <- range(c(range(model$IterativeFitError),range(model$IterativeTestError)))
+plotIterativeError(model) # SSE error vs. training iteration
+plotRegressionError(testOutputs, predict_test) # regression quality
+plotROC(fitted.values(model), trainOutputs) # ROC on training data
+plotROC(predict_test, testOutputs)
+```
+
+## MLP Multilayer with Weight Decay (caret)
+
+```{r,echo=FALSE}
+# cvCtrl <- trainControl(method = "repeatedcv", repeats = 1,
+#                        #summaryFunction = twoClassSummary,
+#                        classProbs = TRUE
+#                        )
+cvCtrl <- trainControl(method = "none", number = 1,
+                       #summaryFunction = twoClassSummary,
+                       classProbs = TRUE
+                       )
+#tune_grid <- expand.grid(size = c(1,3,5))
+tune_grid <- expand.grid(layer1 = c(5),
+                         layer2 = 5,
+                         layer3 = 0,
+                         decay = 0.01
+                         )
+
+set.seed(1)
+mlpwdMLModel <- train(x = trainInputs,
+                 y = trainOutputs,
+                 #y = factor(trainOutputs, levels=c("0","1"), labels=c("Down","Up")),
+                 method = "mlpWeightDecayML",
+                 #tuneLength = 30,
+                 metric = "Accuracy",
+                 trControl = cvCtrl,
+                 tuneGrid = tune_grid,
+                 maxit=500,
+                 linOut = FALSE            
+                 )
+mlpwdMLModel
+nnModelPredict <- predict(mlpwdMLModel, testInputs)
+caret::confusionMatrix(nnModelPredict, testOutputs)
+
+```
+
+## DNN
+
+```{r,echo=FALSE}
+# cvCtrl <- trainControl(method = "repeatedcv", repeats = 1,
+#                        #summaryFunction = twoClassSummary,
+#                        classProbs = TRUE
+#                        )
+cvCtrl <- trainControl(method = "none", number = 1,
+                       #summaryFunction = twoClassSummary,
+                       classProbs = TRUE
+                       )
+#tune_grid <- expand.grid(size = c(1,3,5))
+tune_grid <- expand.grid(layer1 = c(20),
+                         layer2 = 10,
+                         layer3 = 0,
+                         hidden_dropout = 0,
+                         visible_dropout = 0
+                         )
+
+set.seed(1)
+dnnModel <- train(x = trainInputs,
+                 y = trainOutputs,
+                 #y = factor(trainOutputs, levels=c("0","1"), labels=c("Down","Up")),
+                 method = "dnn",
+                 #tuneLength = 30,
+                 metric = "Accuracy",
+                 trControl = cvCtrl,
+                 tuneGrid = tune_grid
+                 )
+dnnModel
+dnnModelPredict <- predict(dnnModel, testInputs)
+caret::confusionMatrix(dnnModelPredict, testOutputs)
+
+```
+
+## H20 Deep Learning
+```{r,echo=FALSE}
+library(h2o)
+h2o.init(ip = "localhost", port = 54321, nthreads = -2, max_mem_size = "3g")
+#demo(h2o.deeplearning)
+
+
+
+h2oModel <- h2o.deeplearning(x = inColNames, 
+                             y = outputColumn, 
+                             training_frame = as.h2o(trainData),
+                             validation_frame = as.h2o(testData),
+                             activation = "Rectifier",
+                             hidden = c(4, 4, 4),
+                             epochs = 100,
+                             #nfolds = 5,
+                             l1 = 1e-5
+                            )
+h2oModel
+# h2oModelPredict <- predict(h2oModel, as.h2o(testData))
+# h2operformance = h2o.performance(model = h2oModel, valid = TRUE)
+# h2operformance = h2o.performance(model = h2oModel)
+#print(h2operformance)
+
+
+```
+
+## H20 GLM
+```{r,echo=FALSE}
+h2oModel <- h2o.glm(x = inColNames, 
+                     y = outputColumn, 
+                     training_frame = as.h2o(trainData),
+                    validation_frame = as.h2o(testData),
+                    family = "binomial"
+                    #nfolds = 5
+                    )
+h2oModel
+# h2operformance = h2o.performance(model = h2oModel, valid = TRUE)
+# h2operformance = h2o.performance(model = h2oModel)
+# print(h2operformance)
+
+```
+
+## GLM
+```{r,echo=FALSE}
+
+# seems to give same coefficients
+model_glm <- glm(fo, data = trainData, family = binomial())
+# model_glm <- glm(fo, data = trainData, family = gaussian())
+# model_glm <- glm(output~feat1, data = trainData, family = gaussian())
+
+summary(model_glm)
+# predict on test set
+predict_test <- predict(model_glm, testData)
+
+# Initial model plots on cross-validation data
+par(mfrow=c(2,2))
+plotRegressionError(testOutputs, predict_test) # regression quality
+plotROC(fitted.values(model_glm), trainOutputs) # ROC on training data
+plotROC(predict_test, testOutputs)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+```{r functions, echo=FALSE, eval=FALSE}
+# Define functions in this chunk
+
+##############  NEEDS VERIFICATION
+# Takes predicted & target values, computes best prediction cutoff for max accuracy.
+# ONLY FOR BINARY CLASSIFICATION - targets values must have only 2 values
+# Returns cutoff and resulting accuracy. Also plots 4 metrics vs. cutoffs
+getCutoffAndPlot <- function(predicted, targets) {
+   
+#     par(mfrow=c(1,1))
+#     plotROC(predicted, targets, main = "ROC Curve") # ROC curve
+    
+    # make predicitons object using ROCR
+    pred_obj <- ROCR::prediction(predicted, targets) # nerualnet also has prediction()
+    # performance - need decision on most important metric
+    perf_obj <- ROCR::performance(pred_obj, "acc", "cutoff")
+    maxMetricInd <- which.max(perf_obj@y.values[[1]])    # index of metric max
+    cutoff <- pred_obj@cutoffs[[1]][maxMetricInd]     # cutoff for max metric 
+    perfMetric <- perf_obj@y.values[[1]][maxMetricInd]   # metric value at cutoff
+    perfMetricName <- perf_obj@y.name                    # metric name
+    
+    # Plot several metrics vs. cutoff
+    par(mfrow=c(2,2))
+    plot(ROCR::performance(pred_obj, "acc", "cutoff"), ylim = c(0,1), main = "Accuracy")
+    plot(ROCR::performance(pred_obj, "f", "cutoff"), ylim = c(0,1), main = "F-Score")
+    plot(ROCR::performance(pred_obj, "phi", "cutoff"), ylim = c(-1,1), main = "Phi Corr. Coef.")
+    plot(ROCR::performance(pred_obj, "sar", "cutoff"), main = "SAR Multi-Score")
+    
+    return(list(cutoff, perfMetricName, perfMetric))
+}
+
+
+```
+
+
