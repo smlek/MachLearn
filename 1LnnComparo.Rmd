@@ -1,5 +1,5 @@
 ---
-title: "MLP on Artificial Data"
+title: "1-Layer 1-Neuron Neural Network Comparizon on Artificial Data"
 author: "Stan Mlekodaj"
 date: "March 8, 2016"
 output: html_document
@@ -12,7 +12,7 @@ rm(list=ls())
 # all par settings which could be changed.
 old.par <- par(no.readonly = TRUE)
 # Load required packages
-#library(knitr)
+library(knitr)
 #library(xtable)
 #library(data.table)
 #library(nnet)
@@ -59,6 +59,13 @@ feat4 <- rnorm(samples)
 arbData <- data.frame(feat1, feat2, feat3, feat4, output)
 
 head(arbData)
+
+matplot(arbData[,-5],arbData[,5])
+par(mfrow=c(2,2))
+for (i in 1:(ncol(arbData) - 1)) {
+    plot(arbData[,i],output, main = colnames(arbData)[i] )
+}
+round(cor(arbData),2)
 
 ```
 
@@ -137,7 +144,6 @@ if(normalizeOutputs) {
     testOutputs <- normalizeData(testOutputs, type = attr(trainOutputs, "normParams")) 
 }
 
-
 # Remove correlated inputs
 if(deCorrelateInputs) {
     corCols <- findCorrelation(cor(trainInputs), cutoff = 0.9, names = FALSE )
@@ -166,14 +172,12 @@ Raw Input Data Information:
 - Number of outputs:         `r length(outCols)`
 - Number of total data sets: `r data_size`
 
-
 |            |Training Data            | Test Data              |
 |------------|-------------------------|------------------------|
 |Skewness    | `r table(trainOutputs)` | `r table(testOutputs)` |
 |Data Sets   | `r nrow(trainData)`     | `r nrow(testData)`     |
 
-Prediction Formula:  `r fo`
-
+Prediction Formula:  `r print(fo)`
 
 ## MLP Weight Decay
 
@@ -182,12 +186,12 @@ Prediction Formula:  `r fo`
 model <- mlp(x = trainInputs, 
                 #y = as.numeric(trainOutputs),
                 y = trainOutputs,
-                size=c(4,4),
+                size=c(1),
                 maxit=500,
                 #size = C(4,2)
                 learnFunc="BackpropWeightDecay", 
-                learnFuncParams=c(0.02, .0005, 0, 0),
-                hiddenActFunc = "Act_TanH",
+                learnFuncParams=c(0.01, .0005, 0, 0),
+                hiddenActFunc = mlpHiddenActFunc,
                 #hiddenActFunc = "Act_Logistic",
                 inputsTest = testInputs,
                 targetsTest = testOutputs,
@@ -198,19 +202,8 @@ summary(model)
 # predict on test set
 predict_test <- predict(model, testInputs)
 
-
 MLPclassificationPlots(model=model, trainOutputs=trainOutputs, predicted=predict_test, targets=testOutputs)
     
-# # Initial model plots on cross-validation data
-# par(mfrow=c(2,2))
-# #errlim <- range(c(range(model$IterativeFitError),range(model$IterativeTestError)))
-# plotIterativeError(model) # SSE error vs. training iteration
-# plot(testOutputs, predict_test, xlim=range(testOutputs), ylim=range(predict_test)) # regression quality
-# #plotRegressionError(testOutputs, predict_test) # regression quality
-# plotROC(fitted.values(model), trainOutputs) # ROC on training data
-# plotROC(predict_test, testOutputs)
-
-
 testCutoff <- getCutoffAndPlot(predict_test, testOutputs)
 cutoff_test <- testCutoff[[1]]
 perfMetricName_test <- testCutoff[[2]]
@@ -225,11 +218,12 @@ perfMetric_test <- testCutoff[[3]]
 model <- mlp(x = trainInputs, 
                 #y = as.numeric(trainOutputs),
                 y = trainOutputs,
-                size=4,
+                size=1,
                 maxit=500,
                 #size = C(4,2)
                 learnFunc="Rprop", 
                 learnFuncParams=c(0.01, 50, 6),
+                hiddenActFunc = mlpHiddenActFunc,
                 inputsTest = testInputs,
                 targetsTest = testOutputs,
                 linOut = linearOutput
@@ -239,13 +233,12 @@ summary(model)
 # predict on test set
 predict_test <- predict(model, testInputs)
 
-# Initial model plots on cross-validation data
-par(mfrow=c(2,2))
-#errlim <- range(c(range(model$IterativeFitError),range(model$IterativeTestError)))
-plotIterativeError(model) # SSE error vs. training iteration
-plotRegressionError(testOutputs, predict_test) # regression quality
-plotROC(fitted.values(model), trainOutputs) # ROC on training data
-plotROC(predict_test, testOutputs)
+MLPclassificationPlots(model=model, trainOutputs=trainOutputs, predicted=predict_test, targets=testOutputs)
+    
+testCutoff <- getCutoffAndPlot(predict_test, testOutputs)
+cutoff_test <- testCutoff[[1]]
+perfMetricName_test <- testCutoff[[2]]
+perfMetric_test <- testCutoff[[3]]
 
 ```
 
@@ -255,11 +248,12 @@ plotROC(predict_test, testOutputs)
 model <- mlp(x = trainInputs, 
                 #y = as.numeric(trainOutputs),
                 y = trainOutputs,
-                size=4,
+                size=1,
                 maxit=500,
                 #size = C(4,2)
                 learnFunc="BackpropMomentum", 
                 learnFuncParams=c(0.01, 0.5, 0.1, 0),
+                hiddenActFunc = mlpHiddenActFunc,
                 inputsTest = testInputs,
                 targetsTest = testOutputs,
                 linOut = linearOutput
@@ -269,13 +263,12 @@ summary(model)
 # predict on test set
 predict_test <- predict(model, testInputs)
 
-# Initial model plots on cross-validation data
-par(mfrow=c(2,2))
-#errlim <- range(c(range(model$IterativeFitError),range(model$IterativeTestError)))
-plotIterativeError(model) # SSE error vs. training iteration
-plotRegressionError(testOutputs, predict_test) # regression quality
-plotROC(fitted.values(model), trainOutputs) # ROC on training data
-plotROC(predict_test, testOutputs)
+MLPclassificationPlots(model=model, trainOutputs=trainOutputs, predicted=predict_test, targets=testOutputs)
+    
+testCutoff <- getCutoffAndPlot(predict_test, testOutputs)
+cutoff_test <- testCutoff[[1]]
+perfMetricName_test <- testCutoff[[2]]
+perfMetric_test <- testCutoff[[3]]
 
 ```
 
@@ -285,11 +278,12 @@ plotROC(predict_test, testOutputs)
 model <- mlp(x = trainInputs, 
                 #y = as.numeric(trainOutputs),
                 y = trainOutputs,
-                size=4,
+                size=1,
                 maxit=500,
                 #size = C(4,2)
                 learnFunc="RpropMAP", 
                 learnFuncParams=c(0.01, 0.01, 0.00005, 20, 0),
+                hiddenActFunc = mlpHiddenActFunc,
                 inputsTest = testInputs,
                 targetsTest = testOutputs,
                 linOut = linearOutput
@@ -299,51 +293,21 @@ summary(model)
 # predict on test set
 predict_test <- predict(model, testInputs)
 
-# Initial model plots on cross-validation data
-par(mfrow=c(2,2))
-#errlim <- range(c(range(model$IterativeFitError),range(model$IterativeTestError)))
-plotIterativeError(model) # SSE error vs. training iteration
-plotRegressionError(testOutputs, predict_test) # regression quality
-plotROC(fitted.values(model), trainOutputs) # ROC on training data
-plotROC(predict_test, testOutputs)
+MLPclassificationPlots(model=model, trainOutputs=trainOutputs, predicted=predict_test, targets=testOutputs)
+    
+testCutoff <- getCutoffAndPlot(predict_test, testOutputs)
+cutoff_test <- testCutoff[[1]]
+perfMetricName_test <- testCutoff[[2]]
+perfMetric_test <- testCutoff[[3]]
 
 ```
 
-## Autoassociative Networks
-```{r,echo=FALSE}
-model <- assoz(x = ,
-               dimX = ,
-               dimY = ,
-               maxit = 100,
-               initFunc = "RM_Random_Weights",
-               initFuncParams = c(1, -1),
-               learnFunc = "RM_delta", 
-               learnFuncParams = c(0.01, 100, 0, 0, 0),
-               updateFunc = "Auto_Synchronous", 
-               updateFuncParams = c(50),
-               shufflePatterns = TRUE
-               )
-
-
-
-summary(model)
-# predict on test set
-predict_test <- predict(model, testInputs)
-
-# Initial model plots on cross-validation data
-par(mfrow=c(2,2))
-#errlim <- range(c(range(model$IterativeFitError),range(model$IterativeTestError)))
-plotIterativeError(model) # SSE error vs. training iteration
-plotRegressionError(testOutputs, predict_test) # regression quality
-plotROC(fitted.values(model), trainOutputs) # ROC on training data
-plotROC(predict_test, testOutputs)
-```
 
 ## Elman
 ```{r,echo=FALSE}
 model <- elman(x = trainInputs,
                     y = trainOutputs,
-                    size=4,
+                    size=1,
                     maxit=500,
                     initFunc = "JE_Weights",
                     initFuncParams = c(1, -1, 0.3, 1, 0.5),
@@ -359,20 +323,19 @@ summary(model)
 # predict on test set
 predict_test <- predict(model, testInputs)
 
-# Initial model plots on cross-validation data
-par(mfrow=c(2,2))
-#errlim <- range(c(range(model$IterativeFitError),range(model$IterativeTestError)))
-plotIterativeError(model) # SSE error vs. training iteration
-plotRegressionError(testOutputs, predict_test) # regression quality
-plotROC(fitted.values(model), trainOutputs) # ROC on training data
-plotROC(predict_test, testOutputs)
+MLPclassificationPlots(model=model, trainOutputs=trainOutputs, predicted=predict_test, targets=testOutputs)
+    
+testCutoff <- getCutoffAndPlot(predict_test, testOutputs)
+cutoff_test <- testCutoff[[1]]
+perfMetricName_test <- testCutoff[[2]]
+perfMetric_test <- testCutoff[[3]]
 ```
 
 ## Jordan
 ```{r,echo=FALSE}
 model <- jordan(x = trainInputs,
                     y = trainOutputs,
-                    size=4,
+                    size=1,
                     maxit=500,
                     initFunc = "JE_Weights",
                     initFuncParams = c(1, -1, 0.3, 1, 0.5),
@@ -388,95 +351,20 @@ summary(model)
 # predict on test set
 predict_test <- predict(model, testInputs)
 
-# Initial model plots on cross-validation data
-par(mfrow=c(2,2))
-#errlim <- range(c(range(model$IterativeFitError),range(model$IterativeTestError)))
-plotIterativeError(model) # SSE error vs. training iteration
-plotRegressionError(testOutputs, predict_test) # regression quality
-plotROC(fitted.values(model), trainOutputs) # ROC on training data
-plotROC(predict_test, testOutputs)
+MLPclassificationPlots(model=model, trainOutputs=trainOutputs, predicted=predict_test, targets=testOutputs)
+    
+testCutoff <- getCutoffAndPlot(predict_test, testOutputs)
+cutoff_test <- testCutoff[[1]]
+perfMetricName_test <- testCutoff[[2]]
+perfMetric_test <- testCutoff[[3]]
 ```
 
-## MLP Multilayer with Weight Decay (caret)
-
-```{r,echo=FALSE}
-# cvCtrl <- trainControl(method = "repeatedcv", repeats = 1,
-#                        #summaryFunction = twoClassSummary,
-#                        classProbs = TRUE
-#                        )
-cvCtrl <- trainControl(method = "none", number = 1
-                       #summaryFunction = twoClassSummary,
-                       #classProbs = TRUE
-                       )
-#tune_grid <- expand.grid(size = c(1,3,5))
-tune_grid <- expand.grid(layer1 = c(4),
-                         layer2 = 0,
-                         layer3 = 0,
-                         decay = 0.00005
-                         )
-
-set.seed(1)
-mlpwdMLModel <- train(x = as.data.frame(trainInputs),
-                 y = as.numeric(trainOutputs),
-                 #y = factor(trainOutputs, levels=c("0","1"), labels=c("Down","Up")),
-                 method = "mlpWeightDecayML",
-                 #learnFuncParams=c(0.01, .00005, 0, 0),
-                 #tuneLength = 30,
-                 #metric = "Accuracy",
-                 trControl = cvCtrl,
-                 tuneGrid = tune_grid,
-                 maxit=500,
-                 linOut = linearOutput            
-                 )
-mlpwdMLModel
-nnModelPredict <- predict(mlpwdMLModel, testInputs)
-caret::confusionMatrix(nnModelPredict, testOutputs)
-
-
-```
-
-
-## test 
-
-```{r,echo=FALSE, eval=FALSE}
-# cvCtrl <- trainControl(method = "repeatedcv", repeats = 1,
-#                        #summaryFunction = twoClassSummary,
-#                        classProbs = TRUE
-#      
-library(caret)
-cvCtrl <- trainControl(method = "none", number = 1
-                       #summaryFunction = twoClassSummary,
-                       #classProbs = TRUE
-                       )
-#tune_grid <- expand.grid(size = c(1,3,5))
-tune_grid <- expand.grid(layer1 = c(4),
-                         layer2 = 0,
-                         layer3 = 0,
-                         decay = 0.00001
-                         )
-data("infert")
-mlpwdMLModel <- train(x = infert[, c(2, 3, 4, 6)],
-                 y = infert[, 5],
-                 #y = factor(trainOutputs, levels=c("0","1"), labels=c("Down","Up")),
-                 method = "mlpWeightDecayML",
-                 learnFuncParams=c(0.01, .00005, 0, 0),
-                 #tuneLength = 30,
-                 #metric = "Accuracy",
-                 trControl = cvCtrl,
-                 tuneGrid = tune_grid,
-                 maxit=500,
-                 linOut = FALSE            
-                 )
-mlpwdMLModel
-nnModelPredict <- predict(mlpwdMLModel, testInputs)
-caret::confusionMatrix(nnModelPredict, testOutputs)
-
-
-```
 
 ## DNN
 
-```{r,echo=FALSE}
+```{r,echo=FALSE, eval=FALSE}
+library(deepnet)
+library(caret)
 # cvCtrl <- trainControl(method = "repeatedcv", repeats = 1,
 #                        #summaryFunction = twoClassSummary,
 #                        classProbs = TRUE
@@ -486,15 +374,16 @@ cvCtrl <- trainControl(method = "none", number = 1,
                        classProbs = TRUE
                        )
 #tune_grid <- expand.grid(size = c(1,3,5))
-tune_grid <- expand.grid(layer1 = c(20),
-                         layer2 = 10,
+tune_grid <- expand.grid(layer1 = c(1),
+                         layer2 = 0,
                          layer3 = 0,
                          hidden_dropout = 0,
                          visible_dropout = 0
                          )
 
 set.seed(1)
-dnnModel <- train(x = trainInputs,
+dnnModel <- train(#x = trainInputs,
+                 x = trainData[, inCols],
                  y = trainOutputs,
                  #y = factor(trainOutputs, levels=c("0","1"), labels=c("Down","Up")),
                  method = "dnn",
@@ -522,13 +411,27 @@ h2oModel <- h2o.deeplearning(x = inColNames,
                              training_frame = as.h2o(trainData),
                              validation_frame = as.h2o(testData),
                              activation = "Rectifier",
-                             #activation = "Rectifier",
-                             hidden = c(4, 4, 4),
+                             #activation = "TanH",
+                             hidden = c(1),
                              epochs = 500,
                              #nfolds = 5,
-                             l1 = 1e-5
+                             l1 = 1e-5,
+                             score_interval = 0.1,
+                             score_training_samples = 0,
+                             export_weights_and_biases = TRUE,
+                             variable_importances = TRUE
                             )
 h2oModel
+h2o.weights(h2oModel)
+h2o.biases(h2oModel)
+h2o.scoreHistory(h2oModel)
+h2o.varimp(h2oModel)
+feat.l1 <- h2o.deepfeatures(h2oModel, data = as.h2o(trainData), layer = 1)
+# h2o.no_progress()
+# h2o.show_progress()
+# h2o.shutdown()
+
+
 # h2oModelPredict <- predict(h2oModel, as.h2o(testData))
 # h2operformance = h2o.performance(model = h2oModel, valid = TRUE)
 # h2operformance = h2o.performance(model = h2oModel)
@@ -540,8 +443,8 @@ h2oModel
 ## H20 GLM
 ```{r,echo=FALSE}
 h2oModel <- h2o.glm(x = inColNames, 
-                     y = outputColumn, 
-                     training_frame = as.h2o(trainData),
+                    y = outputColumn, 
+                    training_frame = as.h2o(trainData),
                     validation_frame = as.h2o(testData),
                     family = "binomial"
                     #nfolds = 5
@@ -557,10 +460,10 @@ h2oModel
 ```{r,echo=FALSE}
 
 # seems to give same coefficients
-#model_glm <- glm(fo, data = trainData, family = binomial())
-model_glm <- glm(fo, data = trainData, family = gaussian())
-#model_glm <- glm.fit(x = trainInputs, y = trainOutputs, family = gaussian())
-model_glm
+model_glm <- glm(fo, data = trainData, family = binomial())
+#model_glm <- glm(fo, data = trainData, family = gaussian())
+#model_glm <- glm(x = trainInputs, y = trainOutputs, family = gaussian())
+#model_glm
 
 
 summary(model_glm)
@@ -634,10 +537,15 @@ MLPregressionPlots <- function(model, trainOutputs, predicted, targets){
 MLPclassificationPlots <- function(model, trainOutputs, predicted, targets){
     par(mfrow=c(2,2))
     #errlim <- range(c(range(model$IterativeFitError),range(model$IterativeTestError)))
-    plotIterativeError(model) # SSE error vs. training iteration
-    plot(targets, predicted, xlim=range(targets), ylim=range(predicted)) # regression qualiry
-    plotROC(fitted.values(model), trainOutputs) # ROC on training data
-    plotROC(predicted, targets)
+    plotIterativeError(model, 
+                       main="Iteration Error - Test Error in Red") # SSE error vs. training iteration
+    plot(targets, predicted, 
+         xlim = range(targets),
+         ylim = range(predicted),
+         main = "Regression Quality"
+         ) # regression qualiry
+    plotROC(fitted.values(model), trainOutputs, main = "ROC - Train Data") # ROC on training data
+    plotROC(predicted, targets, main = "ROC - Test Data")
 }
 
     
