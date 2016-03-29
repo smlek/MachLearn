@@ -12,7 +12,7 @@ rm(list=ls())
 # all par settings which could be changed.
 old.par <- par(no.readonly = TRUE)
 # Load required packages
-library(knitr)
+#library(knitr)
 #library(xtable)
 #library(data.table)
 #library(nnet)
@@ -28,18 +28,21 @@ library(RSNNS)
 
 ## To-Do's
 
-
 - BackpropThroughTime
 
 
 ## Lessons learned
+
 - mlp() function (and probably others in RSNNS) want matrix input, not DF
 - caret mlpWeightDecayML and mlpWeightDecay dont work if using "decay" in grid tune
   and also specifying learnFuncParams.  internal call places "decay" at 
   learnFuncParams[3] not [2]
+- H2O
+    - default is Adaptive Learning method with 2 parameters *rho* and *epsilon*
   
 
 ## Artificial data set for model testing
+
 Idea:  Create input/output data set from a set of equations & random variables. 
 This will create a known model with known correlations & variable importance.
 
@@ -93,6 +96,7 @@ normalizeOutputs <- TRUE
 inputNormType <- "norm"     # type = "norm", "0_1" or "center"
 outputNormType <- "0_1" 
 mlpHiddenActFunc <- "Act_Logistic" # Act_Logistic, Act_TanH
+#mlpHiddenActFunc <- "Act_TanH" # Act_Logistic, Act_TanH
 deCorrelateInputs <- FALSE
 #######################################################################
 
@@ -161,9 +165,9 @@ if(deCorrelateInputs) {
 
 # reconstruct train & test dataframes
 trainData <- data.frame(cbind(trainInputs, trainOutputs))
-colnames(trainData) <- featureNames
+colnames(trainData) <- c(inColNames, outputColumn)
 testData <- data.frame(cbind(testInputs, testOutputs))
-colnames(testData) <- featureNames
+colnames(testData) <- c(inColNames, outputColumn)
 ```
 
 Raw Input Data Information:
@@ -178,6 +182,28 @@ Raw Input Data Information:
 |Data Sets   | `r nrow(trainData)`     | `r nrow(testData)`     |
 
 Prediction Formula:  `r print(fo)`
+
+## Neuralnet
+
+```{r,echo=FALSE}
+library(neuralnet)
+nn <- neuralnet(fo, data = trainData,
+                   hidden=1,
+                   threshold = 0.01,
+                   stepmax = 1e+5,
+                   learningrate = 0.01,
+                   lifesign = "full",
+                   algorithm = "rprop+",
+                   err.fct = "sse",
+                   act.fct = "tanh",
+                   linear.output = linearOutput
+)
+nn
+plot(nn)
+
+#detach(neuralnet)
+```
+
 
 ## MLP Weight Decay
 
@@ -199,6 +225,13 @@ model <- mlp(x = trainInputs,
 )
 #print(model)
 summary(model)
+# normalize MSE errors to per training sample
+model$IterativeTestError <- model$IterativeTestError/nrow(testInputs)
+model$IterativeFitError  <- model$IterativeFitError/nrow(testInputs)  #testInputs, plot scales by train/test ratio
+
+# Final errors
+mseFinalTest <- model$IterativeTestError[model$maxit]
+mseFinalTrain <- model$IterativeFitError[model$maxit]
 # predict on test set
 predict_test <- predict(model, testInputs)
 
@@ -229,6 +262,14 @@ model <- mlp(x = trainInputs,
                 linOut = linearOutput
 )
 #print(model)
+#weightMatrix(model)
+# normalize MSE errors to per training sample
+model$IterativeTestError <- model$IterativeTestError/nrow(testInputs)
+model$IterativeFitError  <- model$IterativeFitError/nrow(testInputs)  #testInputs, plot scales by train/test ratio
+
+# Final errors
+mseFinalTest <- model$IterativeTestError[model$maxit]
+mseFinalTrain <- model$IterativeFitError[model$maxit]
 summary(model)
 # predict on test set
 predict_test <- predict(model, testInputs)
@@ -258,8 +299,17 @@ model <- mlp(x = trainInputs,
                 targetsTest = testOutputs,
                 linOut = linearOutput
 )
-#print(model)
+
+# normalize MSE errors to per training sample
+model$IterativeTestError <- model$IterativeTestError/nrow(testInputs)
+model$IterativeFitError  <- model$IterativeFitError/nrow(testInputs)  #testInputs, plot scales by train/test ratio
+
+# Final errors
+mseFinalTest <- model$IterativeTestError[model$maxit]
+mseFinalTrain <- model$IterativeFitError[model$maxit]
+
 summary(model)
+#weightMatrix(model)
 # predict on test set
 predict_test <- predict(model, testInputs)
 
@@ -270,6 +320,8 @@ cutoff_test <- testCutoff[[1]]
 perfMetricName_test <- testCutoff[[2]]
 perfMetric_test <- testCutoff[[3]]
 
+mseFinalTest <- model$IterativeTestError[model$maxit]/nrow(testInputs)
+mseFinalTrain <- model$IterativeFitError[model$maxit]/nrow(trainInputs)
 ```
 
 ## MLP RpropMAP
@@ -289,7 +341,15 @@ model <- mlp(x = trainInputs,
                 linOut = linearOutput
 )
 #print(model)
+# normalize MSE errors to per training sample
+model$IterativeTestError <- model$IterativeTestError/nrow(testInputs)
+model$IterativeFitError  <- model$IterativeFitError/nrow(testInputs)  #testInputs, plot scales by train/test ratio
+
+# Final errors
+mseFinalTest <- model$IterativeTestError[model$maxit]
+mseFinalTrain <- model$IterativeFitError[model$maxit]
 summary(model)
+#weightMatrix(model)
 # predict on test set
 predict_test <- predict(model, testInputs)
 
@@ -320,6 +380,14 @@ model <- elman(x = trainInputs,
                     linOut = linearOutput
                     )
 summary(model)
+#weightMatrix(model)
+# normalize MSE errors to per training sample
+model$IterativeTestError <- model$IterativeTestError/nrow(testInputs)
+model$IterativeFitError  <- model$IterativeFitError/nrow(testInputs)  #testInputs, plot scales by train/test ratio
+
+# Final errors
+mseFinalTest <- model$IterativeTestError[model$maxit]
+mseFinalTrain <- model$IterativeFitError[model$maxit]
 # predict on test set
 predict_test <- predict(model, testInputs)
 
@@ -348,6 +416,14 @@ model <- jordan(x = trainInputs,
                     linOut = linearOutput
                     )
 summary(model)
+#weightMatrix(model)
+# normalize MSE errors to per training sample
+#model$IterativeTestError <- model$IterativeTestError/nrow(testInputs)
+#model$IterativeFitError  <- model$IterativeFitError/nrow(testInputs)  #testInputs, plot scales by train/test ratio
+
+# Final errors
+mseFinalTest <- model$IterativeTestError[model$maxit]
+mseFinalTrain <- model$IterativeFitError[model$maxit]
 # predict on test set
 predict_test <- predict(model, testInputs)
 
@@ -404,24 +480,90 @@ library(h2o)
 h2o.init(ip = "localhost", port = 54321, nthreads = -2, max_mem_size = "3g")
 #demo(h2o.deeplearning)
 
+# data with factorial output type
+trainDataFactor <- trainData
+testDataFactor <- testData
+trainDataFactor$output <- as.factor(trainDataFactor$output)
+testDataFactor$output <- as.factor(testDataFactor$output)
 
-
-h2oModel <- h2o.deeplearning(x = inColNames, 
+h2oModel <- h2o.deeplearning(x = inColNames, #number indexes also seem to work
                              y = outputColumn, 
-                             training_frame = as.h2o(trainData),
-                             validation_frame = as.h2o(testData),
+                             training_frame = as.h2o(trainDataFactor),
+                             validation_frame = as.h2o(testDataFactor),
                              activation = "Rectifier",
-                             #activation = "TanH",
+                             #activation = "Tanh",
                              hidden = c(1),
-                             epochs = 500,
+                             epochs = 5000,
+                             train_samples_per_iteration = -2, # Auto
+                             #train_samples_per_iteration = 0,  # one epoch
                              #nfolds = 5,
                              l1 = 1e-5,
-                             score_interval = 0.1,
-                             score_training_samples = 0,
+                             l2 = 1e-5,
+                             score_interval = 0.1, #time in seconds
+                             score_training_samples = 0, # 0=all
+                             stopping_tolerance = 0.01,
+                             stopping_rounds = 5,
                              export_weights_and_biases = TRUE,
                              variable_importances = TRUE
                             )
 h2oModel
+plot(h2oModel)
+h2o.weights(h2oModel, matrix_id = 1)
+h2o.biases(h2oModel)
+h2o.scoreHistory(h2oModel)
+h2o.varimp(h2oModel)
+feat.l1 <- h2o.deepfeatures(h2oModel, data = as.h2o(trainData), layer = 1)
+# h2o.no_progress()
+# h2o.show_progress()
+#h2o.shutdown(prompt=FALSE)
+
+
+# h2oModelPredict <- predict(h2oModel, as.h2o(testData))
+# h2operformance = h2o.performance(model = h2oModel, valid = TRUE)
+# h2operformance = h2o.performance(model = h2oModel)
+#print(h2operformance)
+
+
+```
+
+## H20 Deep Learning - Grid Search
+```{r,echo=FALSE}
+library(h2o)
+h2o.init(ip = "localhost", port = 54321, nthreads = -2, max_mem_size = "3g")
+
+hyper_params <- list(
+    hidden = list(c(1), c(3), c(10))
+    )
+
+grid <- h2o.grid(algorithm = "deeplearning",
+                 grid_id = "grid_1",
+                 hyper_params = hyper_params,
+                 x = inColNames, #number indexes also seem to work
+                 y = outputColumn, 
+                 training_frame = as.h2o(trainData),
+                 validation_frame = as.h2o(testData),
+                 activation = "Rectifier",
+                 #activation = "Tanh",
+                 #hidden = c(3),
+                 epochs = 5000,
+                 train_samples_per_iteration = -2, # Auto
+                 #train_samples_per_iteration = 0,  # one epoch
+                 #nfolds = 5,
+                 l1 = 1e-5,
+                 l2 = 1e-5,
+                 score_interval = 0.1, #time in seconds
+                 score_training_samples = 0, # 0=all
+                 stopping_tolerance = 0.01,
+                 stopping_rounds = 5,
+                 export_weights_and_biases = TRUE,
+                 variable_importances = TRUE
+                )
+grid
+grid <- h2o.getGrid("grid_1",sort_by="mse",decreasing=FALSE)
+grid@summary_table[1,]
+h2oModel <- h2o.getModel(grid@model_ids[[1]])
+h2oModel
+plot(h2oModel)
 h2o.weights(h2oModel)
 h2o.biases(h2oModel)
 h2o.scoreHistory(h2oModel)
@@ -429,7 +571,8 @@ h2o.varimp(h2oModel)
 feat.l1 <- h2o.deepfeatures(h2oModel, data = as.h2o(trainData), layer = 1)
 # h2o.no_progress()
 # h2o.show_progress()
-# h2o.shutdown()
+h2o.shutdown(prompt=FALSE)
+
 
 
 # h2oModelPredict <- predict(h2oModel, as.h2o(testData))

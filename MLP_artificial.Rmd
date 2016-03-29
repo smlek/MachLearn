@@ -31,6 +31,13 @@ library(RSNNS)
 
 - BackpropThroughTime
 
+- Backpercolation 1
+- BackpropChunk
+- BackPercolation
+
+When using backpercolation with a network in SNNS the initialization function Random -
+Weights Perc and the activation function Act TanH Xdiv2 should be used
+
 
 ## Lessons learned
 - mlp() function (and probably others in RSNNS) want matrix input, not DF
@@ -155,9 +162,9 @@ if(deCorrelateInputs) {
 
 # reconstruct train & test dataframes
 trainData <- data.frame(cbind(trainInputs, trainOutputs))
-colnames(trainData) <- featureNames
+colnames(trainData) <- c(inColNames, outputColumn)
 testData <- data.frame(cbind(testInputs, testOutputs))
-colnames(testData) <- featureNames
+colnames(testData) <- c(inColNames, outputColumn)
 ```
 
 Raw Input Data Information:
@@ -308,6 +315,71 @@ plotROC(fitted.values(model), trainOutputs) # ROC on training data
 plotROC(predict_test, testOutputs)
 
 ```
+
+## MLP BackpropChunk
+```{r,echo=FALSE}
+#library(RSNNS)
+model <- mlp(x = trainInputs, 
+                #y = as.numeric(trainOutputs),
+                y = trainOutputs,
+                size=4,
+                maxit=500,
+                #size = C(4,2)
+                learnFunc="BackpropChunk", 
+                learnFuncParams=c(0.01, 0, 16, 0, 0),
+                inputsTest = testInputs,
+                targetsTest = testOutputs,
+                linOut = linearOutput
+)
+#print(model)
+summary(model)
+# predict on test set
+predict_test <- predict(model, testInputs)
+
+# Initial model plots on cross-validation data
+par(mfrow=c(2,2))
+#errlim <- range(c(range(model$IterativeFitError),range(model$IterativeTestError)))
+plotIterativeError(model) # SSE error vs. training iteration
+plotRegressionError(testOutputs, predict_test) # regression quality
+plotROC(fitted.values(model), trainOutputs) # ROC on training data
+plotROC(predict_test, testOutputs)
+
+```
+
+
+## MLP BackPercolation
+```{r,echo=FALSE}
+#library(RSNNS)
+model <- mlp(x = trainInputs, 
+                #y = as.numeric(trainOutputs),
+                y = trainOutputs,
+                size=1,
+                maxit=500,
+                #size = C(4,2)
+                initFunc = "Random_Weights_Perc",
+                hiddenActFunc = "Act_TanH_Xdiv2",
+                initFuncParams = c(-0.3, 0.3),
+                learnFunc="BackPercolation", 
+                learnFuncParams=c(1, 0.001, 0),
+                inputsTest = testInputs,
+                targetsTest = testOutputs,
+                linOut = linearOutput
+)
+#print(model)
+summary(model)
+# predict on test set
+predict_test <- predict(model, testInputs)
+
+# Initial model plots on cross-validation data
+par(mfrow=c(2,2))
+#errlim <- range(c(range(model$IterativeFitError),range(model$IterativeTestError)))
+plotIterativeError(model) # SSE error vs. training iteration
+plotRegressionError(testOutputs, predict_test) # regression quality
+plotROC(fitted.values(model), trainOutputs) # ROC on training data
+plotROC(predict_test, testOutputs)
+
+```
+
 
 ## Autoassociative Networks
 ```{r,echo=FALSE}
@@ -509,49 +581,6 @@ caret::confusionMatrix(dnnModelPredict, testOutputs)
 
 ```
 
-## H20 Deep Learning
-```{r,echo=FALSE}
-library(h2o)
-h2o.init(ip = "localhost", port = 54321, nthreads = -2, max_mem_size = "3g")
-#demo(h2o.deeplearning)
-
-
-
-h2oModel <- h2o.deeplearning(x = inColNames, 
-                             y = outputColumn, 
-                             training_frame = as.h2o(trainData),
-                             validation_frame = as.h2o(testData),
-                             activation = "Rectifier",
-                             #activation = "Rectifier",
-                             hidden = c(4, 4, 4),
-                             epochs = 500,
-                             #nfolds = 5,
-                             l1 = 1e-5
-                            )
-h2oModel
-# h2oModelPredict <- predict(h2oModel, as.h2o(testData))
-# h2operformance = h2o.performance(model = h2oModel, valid = TRUE)
-# h2operformance = h2o.performance(model = h2oModel)
-#print(h2operformance)
-
-
-```
-
-## H20 GLM
-```{r,echo=FALSE}
-h2oModel <- h2o.glm(x = inColNames, 
-                     y = outputColumn, 
-                     training_frame = as.h2o(trainData),
-                    validation_frame = as.h2o(testData),
-                    family = "binomial"
-                    #nfolds = 5
-                    )
-h2oModel
-# h2operformance = h2o.performance(model = h2oModel, valid = TRUE)
-# h2operformance = h2o.performance(model = h2oModel)
-# print(h2operformance)
-
-```
 
 ## GLM
 ```{r,echo=FALSE}
